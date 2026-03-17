@@ -41,14 +41,21 @@ input { flex:1; padding:10px; }
 
 <script>
 
+// ================= URL制御 =================
+const params = new URLSearchParams(location.search);
+const isForceNew = params.get("mode") === "new";
+const isRe = params.get("mode") === "re";
+const reserveId = params.get("reserveid");
+
+// ================= 状態 =================
 let step=0;
 let userData={};
 let userId="";
 let makerData=[];
-let calendarSlots=[];
 let selectedDates=[];
+let calendarSlots=[];
 
-// ================= 共通API =================
+// ================= API =================
 async function callAPI(action, body={}){
   try{
     const res = await fetch(ENV.API_BASE,{
@@ -57,18 +64,14 @@ async function callAPI(action, body={}){
       body:JSON.stringify({action,...body})
     });
 
-    if(!res.ok){
-      throw new Error("APIエラー");
-    }
+    if(!res.ok) throw new Error();
 
     return await res.json();
 
   }catch(e){
-    ask("通信エラーが発生しました。時間をおいて再度お試しください。");
+    ask("通信エラーが発生しました");
 
-    showButtons(["最初からやり直す"], ()=>{
-      location.reload();
-    });
+    showButtons(["やり直す"],()=>location.reload());
 
     throw e;
   }
@@ -76,6 +79,7 @@ async function callAPI(action, body={}){
 
 // ================= LIFF =================
 async function init(){
+
   await liff.init({ liffId: ENV.LIFF_ID });
 
   if(!liff.isLoggedIn()){
@@ -88,25 +92,59 @@ async function init(){
 
   const visit = await callAPI("check_visit",{lineId:userId});
 
-  if(!visit || visit.isFirstVisit===undefined){
-    ask("初期化に失敗しました");
-    return;
-  }
+  if(!visit) return;
 
-  if(!visit.isFirstVisit){
+  if(!visit.isFirstVisit && !isForceNew && !isRe){
     location.href="index.html";
     return;
   }
 
   await fetchMaker();
 
-  if(makerData.length===0){
-    ask("現在サービスを利用できません。");
+  // ================= 再予約 =================
+  if(isRe && reserveId){
+    loadReserveForRe();
     return;
   }
 
   ask("こんにちは！予約を開始します");
   handleStep("");
+}
+
+// ================= 再予約ロード =================
+async function loadReserveForRe(){
+
+  addMessage("前回の予約内容を読み込んでいます...");
+
+  const data = await callAPI("get_reserve_detail",{
+    lineId:userId,
+    reserveid:reserveId
+  });
+
+  if(!data || !data.reserve){
+    ask("履歴の取得に失敗しました");
+    return;
+  }
+
+  userData = {
+    name: data.reserve.name,
+    pref: data.reserve.pref,
+    maker: data.reserve.maker,
+    type: data.reserve.type,
+    franchise_id: data.reserve.franchise_id,
+    shop: data.reserve.shop
+  };
+
+  ask(`前回の内容を元に再予約します
+
+名前：${userData.name}
+地域：${userData.pref}
+加盟店：${userData.shop}
+メーカー：${userData.maker}
+
+日時を選択してください`);
+
+  fetchCalendar();
 }
 
 // ================= メーカー =================
@@ -168,10 +206,6 @@ case 0:
   break;
 
 case 1:
-  if(!val){
-    ask("名前を入力してください");
-    return;
-  }
   userData.name=val;
   showPref();
   step=2;
@@ -193,7 +227,6 @@ case 4:
 
 // ================= 都道府県 =================
 function showPref(){
-  ask("都道府県を選択してください");
   showButtons(["東京","神奈川","千葉","埼玉","静岡","愛知"],v=>{
     handleStep(v);
   });
@@ -203,13 +236,6 @@ function showPref(){
 function showMaker(){
   const makers=[...new Set(makerData.map(m=>m.maker))];
 
-  if(makers.length===0){
-    ask("メーカー情報が取得できません");
-    return;
-  }
-
-  ask("メーカーを選択してください");
-
   showButtons(makers,v=>{
     userData.maker=v;
     showPattern(v);
@@ -218,13 +244,6 @@ function showMaker(){
 
 function showPattern(maker){
   const list = makerData.filter(m=>m.maker===maker);
-
-  if(list.length===0){
-    ask("型情報が見つかりません");
-    return;
-  }
-
-  ask("型パターンを選択してください");
 
   showButtons(list.map(x=>x.pattern),v=>{
     const m = list.find(x=>x.pattern===v);
@@ -237,27 +256,15 @@ function showPattern(maker){
 // ================= 加盟店 =================
 async function fetchShops(){
 
-  addMessage("加盟店検索中...");
-
   const data = await callAPI("get_franchise",{
     prefecture:userData.pref,
     type:userData.type
   });
 
   if(!data.items || data.items.length===0){
-    ask("申し訳ありませんが対応可能な加盟店がありません。");
+    ask("対応可能な加盟店がありません");
 
-    showButtons(
-      ["条件を変更する","最初からやり直す"],
-      v=>{
-        if(v==="条件を変更する"){
-          step=2;
-          showPref();
-        }else{
-          location.reload();
-        }
-      }
-    );
+    showButtons(["戻る"],()=>location.reload());
     return;
   }
 
@@ -265,6 +272,7 @@ async function fetchShops(){
     const shop=data.items.find(x=>x.name===v);
     userData.franchise_id=shop.franchise_id;
     userData.shop=shop.name;
+
     fetchCalendar();
   });
 }
@@ -272,25 +280,14 @@ async function fetchShops(){
 // ================= カレンダー =================
 async function fetchCalendar(){
 
-  addMessage("空き枠取得中...");
-
   const data = await callAPI("get_calendar",{
     franchise_id:userData.franchise_id
   });
 
   if(!data.date || data.date.length===0){
-    ask("現在予約可能な日時がありません。");
+    ask("空きがありません");
 
-    showButtons(
-      ["別の加盟店を選ぶ","最初からやり直す"],
-      v=>{
-        if(v==="別の加盟店を選ぶ"){
-          fetchShops();
-        }else{
-          location.reload();
-        }
-      }
-    );
+    showButtons(["加盟店変更"],()=>fetchShops());
     return;
   }
 
@@ -312,7 +309,7 @@ async function fetchCalendar(){
         b.classList.remove("selected");
       }else{
         if(selectedDates.length>=3){
-          alert("3つまで選択可能です");
+          alert("3つまで");
           return;
         }
         selectedDates.push(slot);
@@ -338,10 +335,7 @@ function confirm(){
 
   ask(`以下で予約しますか？
 名前:${userData.name}
-地域:${userData.pref}
 加盟店:${userData.shop}
-メーカー:${userData.maker}
-タイプ:${userData.type}
 1:${userData.date1}
 2:${userData.date2}
 3:${userData.date3}`);
@@ -355,28 +349,23 @@ function confirm(){
 // ================= 送信 =================
 async function submit(){
 
-  addMessage("予約処理中...");
+  addMessage("予約中...");
 
-  try{
-    const res = await callAPI("submit_reserve",{
-      lineId:userId,
-      name:userData.name,
-      model_type:userData.type,
-      franchise_id:userData.franchise_id,
-      request1:userData.date1,
-      request2:userData.date2,
-      request3:userData.date3
-    });
+  const res = await callAPI("submit_reserve",{
+    lineId:userId,
+    name:userData.name,
+    franchise_id:userData.franchise_id,
+    model_type:userData.type,
+    request1:userData.date1,
+    request2:userData.date2,
+    request3:userData.date3
+  });
 
-    if(res.result==="success"){
-      ask("予約が完了しました！");
-      setTimeout(()=>location.href="index.html",1500);
-    }else{
-      ask("予約に失敗しました");
-    }
-
-  }catch(e){
-    ask("予約処理でエラーが発生しました");
+  if(res.result==="success"){
+    ask("予約完了！");
+    setTimeout(()=>location.href="index.html",1500);
+  }else{
+    ask("失敗しました");
   }
 }
 

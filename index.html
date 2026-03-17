@@ -78,20 +78,24 @@ async function loadMyPage(){
   });
 
   const data = await res.json();
-  state.reservations = data.items;
+  state.reservations = data.items || [];
 
   renderMyPage();
 }
 
+// ================= 一覧表示 =================
 function renderMyPage(){
+
   let html="<h3 style='padding:10px;'>予約一覧</h3>";
 
   state.reservations.forEach(r=>{
     html+=`
       <div class="card">
         第1希望：${r.date1}<br>
-        状態：${r.status}<br>
+        状態：${r.status || "未確定"}<br>
+
         <button onclick="goDetail('${r.reserveid}')">詳細</button>
+        <button onclick="goReReserve('${r.reserveid}')">再予約</button>
       </div>
     `;
   });
@@ -101,8 +105,9 @@ function renderMyPage(){
   document.getElementById("app").innerHTML=html;
 }
 
-// ================= 詳細＋チャット =================
+// ================= 詳細 =================
 async function goDetail(id){
+
   const res = await fetch(API,{
     method:"POST",
     headers:{ "Content-Type":"application/json" },
@@ -114,25 +119,39 @@ async function goDetail(id){
   });
 
   const data = await res.json();
+
   state.selected=data.reserve;
   state.messages=data.messages;
 
   renderDetailChat();
 }
 
+// ================= 再予約 =================
+function goReReserve(id){
+  location.href = `form.html?mode=re&reserveid=${id}`;
+}
+
+// ================= 新規予約 =================
+function goForm(){
+  location.href="form.html?mode=new";
+}
+
+// ================= 詳細＋チャット =================
 function renderDetailChat(){
+
   let html=`
     <div id="detail">
       <b>${state.selected.name}</b><br>
       ${state.selected.request_1}<br>
       状態：${state.selected.status}<br>
+
       <button onclick="loadMyPage()">戻る</button>
     </div>
 
     <div id="chat">
   `;
 
-  state.messages.forEach(m=>{
+  (state.messages || []).forEach(m=>{
     html+=`<div class="msg ${m.sender==="user"?"me":"other"}">${m.message}</div>`;
   });
 
@@ -152,7 +171,10 @@ function renderDetailChat(){
 
 // ================= メッセージ送信 =================
 async function sendMsg(){
+
   const text=document.getElementById("msgInput").value;
+
+  if(!text) return;
 
   await fetch(API,{
     method:"POST",
@@ -166,12 +188,8 @@ async function sendMsg(){
   });
 
   document.getElementById("msgInput").value="";
-  goDetail(state.selected.reserveid);
-}
 
-// ================= 遷移 =================
-function goForm(){
-  location.href="form.html";
+  goDetail(state.selected.reserveid);
 }
 
 // ================= スクロール =================
