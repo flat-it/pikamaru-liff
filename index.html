@@ -4,371 +4,184 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<title>洗濯機クリーニング予約</title>
-
 <script src="env.js"></script>
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 
 <style>
-body { margin:0; font-family:sans-serif; background:#e5ddd5; }
-#chat { padding:10px; height:90vh; overflow-y:auto; }
-.message { max-width:75%; margin:10px; padding:10px; border-radius:10px; }
-.bot { background:#fff; }
-.user { background:#dcf8c6; margin-left:auto; }
+body { margin:0; font-family:sans-serif; background:#e5ddd5; height:100vh; display:flex; flex-direction:column;}
+#app { flex:1; display:flex; flex-direction:column;}
+.card { background:#fff; margin:5px; padding:10px; border-radius:10px;}
 
-#inputArea {
-    position:fixed;
-    bottom:0;
-    width:100%;
-    display:flex;
-    background:#fff;
-}
+#detail { background:#fff; padding:10px; border-bottom:1px solid #ccc;}
+#chat { flex:1; overflow:auto; padding:10px;}
+.msg { max-width:70%; padding:8px; margin:5px; border-radius:10px;}
+.me { background:#dcf8c6; margin-left:auto;}
+.other { background:#fff;}
 
-input { flex:1; padding:10px; }
-
-.btn {
-    display:block;
-    margin:5px 0;
-    padding:10px;
-    background:#4CAF50;
-    color:white;
-    border:none;
-    border-radius:5px;
-}
-.btn.selected { background:#ff9800; }
+#input { display:flex; border-top:1px solid #ccc;}
+#input input { flex:1; padding:10px;}
 </style>
 </head>
 
 <body>
-
-<div id="chat"></div>
-
-<div id="inputArea">
-<input id="input" placeholder="入力">
-<button onclick="send()">送信</button>
-</div>
+<div id="app"></div>
 
 <script>
-let step = 0;
-let userData = {};
-let userId = "";
-let makerData = [];
-let calendarSlots = [];
-let selectedDates = [];
 
-/* =====================
-   API共通
-===================== */
-async function callAPI(action, body = {}) {
-    const res = await fetch(ENV.API_BASE, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, ...body })
-    });
-    return await res.json();
-}
+const API = ENV.API_BASE;
 
-/* =====================
-   LIFF
-===================== */
+let state = {
+  lineId:null,
+  reservations:[],
+  selected:null,
+  messages:[]
+};
+
+// ================= 初期化 =================
 async function init(){
-    await liff.init({ liffId: ENV.LIFF_ID });
+  await liff.init({ liffId: ENV.LIFF_ID });
 
-    if(liff.isLoggedIn()){
-        const profile = await liff.getProfile();
-        userId = profile.userId;
-    } else {
-        liff.login();
-    }
+  if(!liff.isLoggedIn()){
+    liff.login();
+    return;
+  }
 
-    await fetchMakerMaster();
+  const profile = await liff.getProfile();
+  state.lineId = profile.userId;
 
-    ask("こんにちは！予約を開始します");
-    handleStep("");
+  checkVisit();
 }
 
-/* =====================
-   メーカー取得
-===================== */
-async function fetchMakerMaster(){
-    const data = await callAPI("check_maker");
-    makerData = data.items;
+// ================= 初回判定 =================
+async function checkVisit(){
+  const res = await fetch(API,{
+    method:"POST",
+    headers:{ "Content-Type":"application/json" },
+    body:JSON.stringify({action:"check_visit",lineId:state.lineId})
+  });
+
+  const data = await res.json();
+
+  if(data.isFirstVisit){
+    location.href="form.html";
+  } else {
+    loadMyPage();
+  }
 }
 
-/* =====================
-   UI
-===================== */
-function addMessage(text, type="bot"){
-    const div = document.createElement("div");
-    div.className = "message " + type;
-    div.innerText = text;
-    chat.appendChild(div);
-    chat.scrollTop = chat.scrollHeight;
+// ================= マイページ =================
+async function loadMyPage(){
+  const res = await fetch(API,{
+    method:"POST",
+    headers:{ "Content-Type":"application/json" },
+    body:JSON.stringify({action:"get_myPage",lineId:state.lineId})
+  });
+
+  const data = await res.json();
+  state.reservations = data.items;
+
+  renderMyPage();
 }
 
-function ask(text){
-    setTimeout(()=>addMessage(text),500);
+function renderMyPage(){
+  let html="<h3 style='padding:10px;'>予約一覧</h3>";
+
+  state.reservations.forEach(r=>{
+    html+=`
+      <div class="card">
+        第1希望：${r.date1}<br>
+        状態：${r.status}<br>
+        <button onclick="goDetail('${r.reserveid}')">詳細</button>
+      </div>
+    `;
+  });
+
+  html+=`<button onclick="goForm()">新規予約</button>`;
+
+  document.getElementById("app").innerHTML=html;
 }
 
-function showButtons(list, callback){
-    const div = document.createElement("div");
-    div.className="message bot";
+// ================= 詳細＋チャット =================
+async function goDetail(id){
+  const res = await fetch(API,{
+    method:"POST",
+    headers:{ "Content-Type":"application/json" },
+    body:JSON.stringify({
+      action:"get_reserve_detail",
+      lineId:state.lineId,
+      reserveid:id
+    })
+  });
 
-    list.forEach(v=>{
-        const b = document.createElement("button");
-        b.className="btn";
-        b.innerText=v;
+  const data = await res.json();
+  state.selected=data.reserve;
+  state.messages=data.messages;
 
-        b.onclick=()=>{
-            addMessage(v,"user");
-            callback(v);
-        };
-
-        div.appendChild(b);
-    });
-
-    chat.appendChild(div);
+  renderDetailChat();
 }
 
-/* =====================
-   入力
-===================== */
-function send(){
-    const val = input.value;
-    if(!val) return;
-    addMessage(val,"user");
-    input.value="";
-    handleStep(val);
+function renderDetailChat(){
+  let html=`
+    <div id="detail">
+      <b>${state.selected.name}</b><br>
+      ${state.selected.request_1}<br>
+      状態：${state.selected.status}<br>
+      <button onclick="loadMyPage()">戻る</button>
+    </div>
+
+    <div id="chat">
+  `;
+
+  state.messages.forEach(m=>{
+    html+=`<div class="msg ${m.sender==="user"?"me":"other"}">${m.message}</div>`;
+  });
+
+  html+=`
+    </div>
+
+    <div id="input">
+      <input id="msgInput">
+      <button onclick="sendMsg()">送信</button>
+    </div>
+  `;
+
+  document.getElementById("app").innerHTML=html;
+
+  scrollBottom();
 }
 
-/* =====================
-   ステップ
-===================== */
-function handleStep(val){
+// ================= メッセージ送信 =================
+async function sendMsg(){
+  const text=document.getElementById("msgInput").value;
 
-switch(step){
+  await fetch(API,{
+    method:"POST",
+    headers:{ "Content-Type":"application/json" },
+    body:JSON.stringify({
+      action:"send_message",
+      lineId:state.lineId,
+      reserveid:state.selected.reserveid,
+      message:text
+    })
+  });
 
-case 0:
-    ask("お名前を教えてください");
-    step++;
-    break;
-
-case 1:
-    userData.name = val;
-    showPref();
-    step++;
-    break;
-
-case 2:
-    userData.pref = val;
-    showMaker();
-    step++;
-    break;
-
-case 3:
-    userData.maker = val;
-    showPattern(val);
-    break;
-
-case 4:
-    userData.model = val;
-    fetchShops();
-    step++;
-    break;
-
-case 5:
-    break;
-
-case 6:
-    break;
-
-case 7:
-    confirm();
-    step++;
-    break;
-
-case 8:
-    if(val==="はい") submit();
-    else{
-        ask("最初からやり直します");
-        step=0;
-    }
-    break;
-}
+  document.getElementById("msgInput").value="";
+  goDetail(state.selected.reserveid);
 }
 
-/* =====================
-   都道府県
-===================== */
-function showPref(){
-    ask("都道府県を選択してください");
-    showButtons(["東京","神奈川","千葉","埼玉","茨城","静岡","愛知"], v=>{
-        handleStep(v);
-    });
+// ================= 遷移 =================
+function goForm(){
+  location.href="form.html";
 }
 
-/* =====================
-   メーカー → パターン
-===================== */
-function showMaker(){
-    const makers = [...new Set(makerData.map(m=>m.maker))];
-    ask("メーカーを選択してください");
-
-    showButtons(makers, v=>{
-        userData.maker = v;
-        showPattern(v);
-    });
-}
-
-function showPattern(maker){
-
-    const patterns = makerData
-        .filter(m=>m.maker===maker)
-        .map(m=>m.pattern);
-
-    ask("型パターンを選択してください");
-
-    showButtons(patterns, v=>{
-        const match = makerData.find(m=>m.pattern===v);
-
-        userData.pattern = v;
-        userData.type = match.type;
-
-        addMessage(`タイプ：${userData.type}`);
-
-        ask("型番を入力してください（任意）");
-        step = 4;
-    });
-}
-
-/* =====================
-   加盟店取得
-===================== */
-async function fetchShops(){
-
-    addMessage("加盟店を検索中...");
-
-    const data = await callAPI("get_franchise", {
-        prefecture: userData.pref,
-        type: userData.type
-    });
-
-    showButtons(
-        data.items.map(x=>x.name),
-        (v)=>{
-            const shop = data.items.find(x=>x.name===v);
-            userData.shop = shop.name;
-            userData.franchise_id = shop.franchise_id;
-
-            fetchCalendar();
-        }
-    );
-}
-
-/* =====================
-   カレンダー
-===================== */
-async function fetchCalendar(){
-
-    addMessage("空き枠を取得中...");
-
-    const data = await callAPI("get_calendar", {
-        franchise_id: userData.franchise_id
-    });
-
-    calendarSlots = data.date;
-    showCalendar();
-}
-
-function showCalendar(){
-
-    ask("希望日時を3つ選択してください");
-
-    const div = document.createElement("div");
-    div.className="message bot";
-
-    calendarSlots.forEach(slot=>{
-        const b = document.createElement("button");
-        b.className="btn";
-        b.innerText=slot;
-
-        b.onclick=()=>{
-            if(selectedDates.includes(slot)){
-                selectedDates = selectedDates.filter(d=>d!==slot);
-                b.classList.remove("selected");
-            }else{
-                if(selectedDates.length>=3){
-                    alert("3つまで選択可能です");
-                    return;
-                }
-                selectedDates.push(slot);
-                b.classList.add("selected");
-            }
-
-            if(selectedDates.length===3){
-                userData.date1=selectedDates[0];
-                userData.date2=selectedDates[1];
-                userData.date3=selectedDates[2];
-
-                step=7;
-                confirm();
-            }
-        };
-
-        div.appendChild(b);
-    });
-
-    chat.appendChild(div);
-}
-
-/* =====================
-   確認
-===================== */
-function confirm(){
-    ask(
-`以下で予約しますか？
-名前:${userData.name}
-地域:${userData.pref}
-加盟店:${userData.shop}
-メーカー:${userData.maker}
-タイプ:${userData.type}
-希望1:${userData.date1}
-希望2:${userData.date2}
-希望3:${userData.date3}
-
-「はい」または「いいえ」`
-);
-}
-
-/* =====================
-   送信
-===================== */
-async function submit(){
-
-    addMessage("予約処理中...");
-
-    const data = await callAPI("submit_reserve", {
-        lineId: userId,
-        name: userData.name,
-        address: userData.address || "",
-        postcode: userData.postcode || "",
-        model_number: userData.model || "",
-        model_type: userData.type,
-        franchise_id: userData.franchise_id,
-        request1: userData.date1,
-        request2: userData.date2,
-        request3: userData.date3
-    });
-
-    if(data.result === "success"){
-        ask("予約が完了しました！");
-    }else{
-        ask("予約に失敗しました");
-    }
+// ================= スクロール =================
+function scrollBottom(){
+  const el=document.getElementById("chat");
+  el.scrollTop=el.scrollHeight;
 }
 
 init();
-</script>
 
+</script>
 </body>
 </html>
