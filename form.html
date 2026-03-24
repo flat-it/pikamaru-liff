@@ -9,24 +9,38 @@
 
 <style>
 body { margin:0; font-family:sans-serif; background:#e5ddd5; }
-#chat { padding:10px; height:90vh; overflow-y:auto; }
-.message { max-width:75%; margin:10px; padding:10px; border-radius:10px; }
+
+#chat { padding:10px; height:60vh; overflow-y:auto; }
+
+.message { max-width:75%; margin:10px; padding:12px; border-radius:10px; }
 .bot { background:#fff; }
 .user { background:#dcf8c6; margin-left:auto; }
 
-#inputArea { position:fixed; bottom:0; width:100%; display:flex; background:#fff; }
-input { flex:1; padding:10px; }
-
 .btn {
   display:block;
-  margin:5px 0;
-  padding:10px;
+  margin:8px 0;
+  padding:15px;
+  font-size:16px;
   background:#4CAF50;
   color:white;
   border:none;
-  border-radius:5px;
+  border-radius:8px;
 }
+
 .btn.selected { background:#ff9800; }
+
+/* フォーム */
+#formArea {
+  display:none;
+  padding:15px;
+  background:#fff;
+}
+
+#formArea input, textarea {
+  width:100%;
+  padding:10px;
+  margin:5px 0;
+}
 </style>
 </head>
 
@@ -34,50 +48,28 @@ input { flex:1; padding:10px; }
 
 <div id="chat"></div>
 
-<div id="inputArea">
-<input id="input">
-<button onclick="send()">送信</button>
-</div>
+<div id="formArea"></div>
 
 <script>
 
-// ================= URL制御 =================
-const params = new URLSearchParams(location.search);
-const isForceNew = params.get("mode") === "new";
-const isRe = params.get("mode") === "re";
-const reserveId = params.get("reserveid");
-
 // ================= 状態 =================
-let step=0;
-let userData={};
 let userId="";
+let userData={};
 let makerData=[];
-let selectedDates=[];
 let calendarSlots=[];
+let selectedDates=[];
 
 // ================= API =================
 async function callAPI(action, body={}){
-  try{
-    const res = await fetch(ENV.API_BASE,{
-      method:"POST",
-      headers:{ "Content-Type":"application/json" },
-      body:JSON.stringify({action,...body})
-    });
-
-    if(!res.ok) throw new Error();
-
-    return await res.json();
-
-  }catch(e){
-    ask("通信エラーが発生しました");
-
-    showButtons(["やり直す"],()=>location.reload());
-
-    throw e;
-  }
+  const res = await fetch(ENV.API_BASE,{
+    method:"POST",
+    headers:{ "Content-Type":"application/json" },
+    body:JSON.stringify({action,...body})
+  });
+  return await res.json();
 }
 
-// ================= LIFF =================
+// ================= 初期化 =================
 async function init(){
 
   await liff.init({ liffId: ENV.LIFF_ID });
@@ -90,67 +82,13 @@ async function init(){
   const profile = await liff.getProfile();
   userId = profile.userId;
 
-  const visit = await callAPI("check_visit",{lineId:userId});
-
-  if(!visit) return;
-
-  if(!visit.isFirstVisit && !isForceNew && !isRe){
-    location.href="index.html";
-    return;
-  }
-
-  await fetchMaker();
-
-  // ================= 再予約 =================
-  if(isRe && reserveId){
-    loadReserveForRe();
-    return;
-  }
+  const maker = await callAPI("check_maker");
+  makerData = maker.items;
 
   ask("こんにちは！予約を開始します");
-  handleStep("");
-}
+  ask("お名前を教えてください");
 
-// ================= 再予約ロード =================
-async function loadReserveForRe(){
-
-  addMessage("前回の予約内容を読み込んでいます...");
-
-  const data = await callAPI("get_reserve_detail",{
-    lineId:userId,
-    reserveid:reserveId
-  });
-
-  if(!data || !data.reserve){
-    ask("履歴の取得に失敗しました");
-    return;
-  }
-
-  userData = {
-    name: data.reserve.name,
-    pref: data.reserve.pref,
-    maker: data.reserve.maker,
-    type: data.reserve.type,
-    franchise_id: data.reserve.franchise_id,
-    shop: data.reserve.shop
-  };
-
-  ask(`前回の内容を元に再予約します
-
-名前：${userData.name}
-地域：${userData.pref}
-加盟店：${userData.shop}
-メーカー：${userData.maker}
-
-日時を選択してください`);
-
-  fetchCalendar();
-}
-
-// ================= メーカー =================
-async function fetchMaker(){
-  const data = await callAPI("check_maker");
-  makerData = data?.items || [];
+  step=1;
 }
 
 // ================= UI =================
@@ -186,35 +124,45 @@ function showButtons(list,callback){
   chat.appendChild(div);
 }
 
-// ================= 入力 =================
-function send(){
-  const val=input.value;
-  if(!val) return;
-  addMessage(val,"user");
-  input.value="";
-  handleStep(val);
-}
-
 // ================= ステップ =================
-function handleStep(val){
+let step=0;
+
+function handle(val){
 
 switch(step){
 
-case 0:
-  ask("お名前を教えてください");
-  step=1;
-  break;
-
 case 1:
   userData.name=val;
-  showPref();
+  ask("お住まいの都道府県はどこですか？");
+  showButtons(["東京","神奈川","千葉","埼玉","静岡","愛知"],v=>handle(v));
   step=2;
   break;
 
 case 2:
   userData.pref=val;
-  showMaker();
+  ask("ご利用の洗濯機メーカーはどこですか？");
+
+  const makers=[...new Set(makerData.map(m=>m.maker))];
+  showButtons(makers,v=>handle(v));
+
   step=3;
+  break;
+
+case 3:
+  userData.maker=val;
+
+  const patterns = makerData.filter(m=>m.maker===val);
+
+  ask("型パターンを選択してください");
+
+  showButtons(patterns.map(p=>p.pattern),v=>{
+    const m=patterns.find(x=>x.pattern===v);
+    userData.type=m.type;
+
+    ask("型番を入力してください（任意）");
+    step=4;
+  });
+
   break;
 
 case 4:
@@ -222,39 +170,14 @@ case 4:
   fetchShops();
   step=5;
   break;
+
 }
-}
-
-// ================= 都道府県 =================
-function showPref(){
-  showButtons(["東京","神奈川","千葉","埼玉","静岡","愛知"],v=>{
-    handleStep(v);
-  });
-}
-
-// ================= メーカー =================
-function showMaker(){
-  const makers=[...new Set(makerData.map(m=>m.maker))];
-
-  showButtons(makers,v=>{
-    userData.maker=v;
-    showPattern(v);
-  });
-}
-
-function showPattern(maker){
-  const list = makerData.filter(m=>m.maker===maker);
-
-  showButtons(list.map(x=>x.pattern),v=>{
-    const m = list.find(x=>x.pattern===v);
-    userData.type=m.type;
-    ask("型番を入力してください（任意）");
-    step=4;
-  });
 }
 
 // ================= 加盟店 =================
 async function fetchShops(){
+
+  ask("加盟店を検索しています");
 
   const data = await callAPI("get_franchise",{
     prefecture:userData.pref,
@@ -262,16 +185,16 @@ async function fetchShops(){
   });
 
   if(!data.items || data.items.length===0){
-    ask("対応可能な加盟店がありません");
-
-    showButtons(["戻る"],()=>location.reload());
+    ask("申し訳ありませんが対応可能な加盟店がありません。");
     return;
   }
 
+  ask("ご希望の加盟店を選択してください");
+
   showButtons(data.items.map(x=>x.name),v=>{
     const shop=data.items.find(x=>x.name===v);
-    userData.franchise_id=shop.franchise_id;
     userData.shop=shop.name;
+    userData.franchise_id=shop.franchise_id;
 
     fetchCalendar();
   });
@@ -280,20 +203,15 @@ async function fetchShops(){
 // ================= カレンダー =================
 async function fetchCalendar(){
 
+  ask("空き枠を取得しています");
+
   const data = await callAPI("get_calendar",{
     franchise_id:userData.franchise_id
   });
 
-  if(!data.date || data.date.length===0){
-    ask("空きがありません");
-
-    showButtons(["加盟店変更"],()=>fetchShops());
-    return;
-  }
-
   calendarSlots=data.date;
 
-  ask("希望日時を3つ選択してください");
+  ask("希望日時を3つ選択してください（優先順）");
 
   const div=document.createElement("div");
   div.className="message bot";
@@ -304,23 +222,17 @@ async function fetchCalendar(){
     b.innerText=slot;
 
     b.onclick=()=>{
-      if(selectedDates.includes(slot)){
-        selectedDates=selectedDates.filter(x=>x!==slot);
-        b.classList.remove("selected");
-      }else{
-        if(selectedDates.length>=3){
-          alert("3つまで");
-          return;
-        }
-        selectedDates.push(slot);
-        b.classList.add("selected");
-      }
+      if(selectedDates.length>=3) return;
+
+      selectedDates.push(slot);
+      b.classList.add("selected");
 
       if(selectedDates.length===3){
         userData.date1=selectedDates[0];
         userData.date2=selectedDates[1];
         userData.date3=selectedDates[2];
-        confirm();
+
+        showForm(); // ★ここが重要
       }
     };
 
@@ -330,30 +242,35 @@ async function fetchCalendar(){
   chat.appendChild(div);
 }
 
-// ================= 確認 =================
-function confirm(){
+// ================= フォーム表示 =================
+function showForm(){
 
-  ask(`以下で予約しますか？
-名前:${userData.name}
-加盟店:${userData.shop}
-1:${userData.date1}
-2:${userData.date2}
-3:${userData.date3}`);
+  ask("詳細情報を入力してください");
 
-  showButtons(["はい","いいえ"],v=>{
-    if(v==="はい") submit();
-    else location.reload();
-  });
+  formArea.style.display="block";
+
+  formArea.innerHTML=`
+    郵便番号<input id="postcode">
+    住所<input id="address">
+    電話番号<input id="tel">
+    メール<input id="email">
+    症状<textarea id="symptoms"></textarea>
+
+    <button class="btn" onclick="submit()">予約する</button>
+  `;
 }
 
 // ================= 送信 =================
 async function submit(){
 
-  addMessage("予約中...");
-
-  const res = await callAPI("submit_reserve",{
+  const data = await callAPI("submit_reserve",{
     lineId:userId,
     name:userData.name,
+    postcode:postcode.value,
+    address:address.value,
+    tel:tel.value,
+    email:email.value,
+    symptoms:symptoms.value,
     franchise_id:userData.franchise_id,
     model_type:userData.type,
     request1:userData.date1,
@@ -361,13 +278,27 @@ async function submit(){
     request3:userData.date3
   });
 
-  if(res.result==="success"){
-    ask("予約完了！");
-    setTimeout(()=>location.href="index.html",1500);
+  if(data.result==="success"){
+    ask("予約が完了しました！");
   }else{
-    ask("失敗しました");
+    ask("予約に失敗しました");
   }
 }
+
+// ================= 入力 =================
+document.body.addEventListener("keydown",e=>{
+  if(e.key==="Enter"){
+    const input=document.getElementById("input");
+    if(input){
+      const val=input.value;
+      if(val){
+        addMessage(val,"user");
+        input.value="";
+        handle(val);
+      }
+    }
+  }
+});
 
 init();
 

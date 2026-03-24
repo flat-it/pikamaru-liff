@@ -2,204 +2,633 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>ピカまる本舗 マイページ</title>
 <script src="env.js"></script>
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-
 <style>
-body { margin:0; font-family:sans-serif; background:#e5ddd5; height:100vh; display:flex; flex-direction:column;}
-#app { flex:1; display:flex; flex-direction:column;}
-.card { background:#fff; margin:5px; padding:10px; border-radius:10px;}
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap');
 
-#detail { background:#fff; padding:10px; border-bottom:1px solid #ccc;}
-#chat { flex:1; overflow:auto; padding:10px;}
-.msg { max-width:70%; padding:8px; margin:5px; border-radius:10px;}
-.me { background:#dcf8c6; margin-left:auto;}
-.other { background:#fff;}
+  :root {
+    --primary: #00B900;
+    --primary-dark: #009900;
+    --primary-light: #e8f9e8;
+    --bg: #f0f2f5;
+    --white: #ffffff;
+    --text: #1a1a1a;
+    --text-muted: #888;
+    --border: #e0e0e0;
+    --bubble-me: #c8f7a0;
+    --bubble-other: #ffffff;
+    --shadow: 0 2px 8px rgba(0,0,0,0.08);
+    --radius: 12px;
+  }
 
-#input { display:flex; border-top:1px solid #ccc;}
-#input input { flex:1; padding:10px;}
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Noto Sans JP', sans-serif;
+    background: var(--bg);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ===== ヘッダー ===== */
+  #header {
+    background: var(--primary);
+    color: white;
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+  }
+  #header .back-btn {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 20px;
+    cursor: pointer;
+    padding: 0 4px;
+    display: none;
+  }
+  #header h1 {
+    font-size: 17px;
+    font-weight: 700;
+    flex: 1;
+  }
+  #header .new-btn {
+    background: white;
+    color: var(--primary);
+    border: none;
+    border-radius: 20px;
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  /* ===== メインコンテンツ ===== */
+  #main { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+
+  /* ===== ローディング ===== */
+  #loading {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    color: var(--text-muted);
+  }
+  .spinner {
+    width: 36px; height: 36px;
+    border: 3px solid var(--border);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ===== マイページ一覧 ===== */
+  #mypage {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+    display: none;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .reserve-card {
+    background: var(--white);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    box-shadow: var(--shadow);
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+    position: relative;
+  }
+  .reserve-card:active { transform: scale(0.98); }
+
+  .reserve-card .status-badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 20px;
+    margin-bottom: 8px;
+  }
+  .status-badge.confirmed { background: #e8f9e8; color: var(--primary-dark); }
+  .status-badge.pending   { background: #fff8e1; color: #f57c00; }
+  .status-badge.cancelled { background: #fce4ec; color: #c62828; }
+  .status-badge.default   { background: #f0f2f5; color: #666; }
+
+  .reserve-card .date-main {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+  .reserve-card .date-sub {
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.6;
+  }
+  .reserve-card .msg-badge {
+    position: absolute;
+    top: 14px; right: 16px;
+    background: #f44336;
+    color: white;
+    font-size: 11px;
+    font-weight: 700;
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .reserve-card .card-arrow {
+    position: absolute;
+    bottom: 14px; right: 16px;
+    color: var(--text-muted);
+    font-size: 16px;
+  }
+
+  .empty-state {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    color: var(--text-muted);
+    padding: 40px;
+    text-align: center;
+  }
+  .empty-state .icon { font-size: 48px; }
+  .empty-state p { font-size: 14px; line-height: 1.6; }
+
+  /* ===== 詳細 + チャット ===== */
+  #detail-view {
+    flex: 1;
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  #reserve-info {
+    background: var(--white);
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  #reserve-info .info-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+  #reserve-info .info-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-weight: 500;
+  }
+  #reserve-info .info-val {
+    font-size: 13px;
+    color: var(--text);
+    font-weight: 500;
+  }
+  #reserve-info .info-status {
+    font-size: 12px;
+    font-weight: 700;
+    padding: 2px 10px;
+    border-radius: 20px;
+  }
+
+  #chat-area {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    background: var(--bg);
+  }
+
+  .chat-bubble {
+    max-width: 75%;
+    padding: 10px 13px;
+    border-radius: 14px;
+    font-size: 14px;
+    line-height: 1.5;
+    position: relative;
+  }
+  .chat-bubble.me {
+    background: var(--bubble-me);
+    align-self: flex-end;
+    border-bottom-right-radius: 4px;
+  }
+  .chat-bubble.other {
+    background: var(--bubble-other);
+    align-self: flex-start;
+    border-bottom-left-radius: 4px;
+    box-shadow: var(--shadow);
+  }
+  .chat-bubble .bubble-time {
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-top: 4px;
+    text-align: right;
+  }
+  .chat-bubble.me .bubble-time { text-align: right; }
+  .chat-bubble.other .bubble-time { text-align: left; }
+
+  .chat-date-divider {
+    text-align: center;
+    font-size: 11px;
+    color: var(--text-muted);
+    background: rgba(0,0,0,0.06);
+    border-radius: 10px;
+    padding: 3px 10px;
+    align-self: center;
+  }
+
+  #chat-input-area {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    background: var(--white);
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  #chat-input-area input {
+    flex: 1;
+    border: 1.5px solid var(--border);
+    border-radius: 22px;
+    padding: 9px 14px;
+    font-size: 14px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  #chat-input-area input:focus { border-color: var(--primary); }
+  #chat-input-area button {
+    background: var(--primary);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 40px; height: 40px;
+    font-size: 18px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    transition: background 0.2s;
+  }
+  #chat-input-area button:disabled { background: #ccc; cursor: not-allowed; }
+
+  /* ===== エラートースト ===== */
+  #toast {
+    position: fixed;
+    bottom: 80px; left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: #323232;
+    color: white;
+    padding: 10px 20px;
+    border-radius: 20px;
+    font-size: 13px;
+    opacity: 0;
+    transition: all 0.3s;
+    pointer-events: none;
+    z-index: 999;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 </style>
 </head>
-
 <body>
-<div id="app"></div>
+
+<div id="header">
+  <button class="back-btn" id="backBtn" onclick="showMyPage()">←</button>
+  <h1 id="headerTitle">予約一覧</h1>
+  <button class="new-btn" id="newBtn" onclick="goForm()">＋ 新規予約</button>
+</div>
+
+<div id="main">
+
+  <!-- ローディング -->
+  <div id="loading">
+    <div class="spinner"></div>
+    <span>読み込み中...</span>
+  </div>
+
+  <!-- マイページ一覧 -->
+  <div id="mypage"></div>
+
+  <!-- 詳細 + チャット -->
+  <div id="detail-view">
+    <div id="reserve-info"></div>
+    <div id="chat-area"></div>
+    <div id="chat-input-area">
+      <input id="msgInput" placeholder="メッセージを入力..." maxlength="500">
+      <button id="sendBtn" onclick="sendMsg()">➤</button>
+    </div>
+  </div>
+
+</div>
+
+<div id="toast"></div>
 
 <script>
-
-const API = ENV.API_BASE;
-
-let state = {
-  lineId:null,
-  reservations:[],
-  selected:null,
-  messages:[]
+// ===== 状態管理 =====
+const state = {
+  lineId: null,
+  reservations: [],
+  currentReserve: null,
+  messages: [],
+  sending: false
 };
 
-// ================= 初期化 =================
-async function init(){
-  await liff.init({ liffId: ENV.LIFF_ID });
-
-  if(!liff.isLoggedIn()){
-    liff.login();
-    return;
-  }
-
-  const profile = await liff.getProfile();
-  state.lineId = profile.userId;
-
-  checkVisit();
-}
-
-// ================= 初回判定 =================
-async function checkVisit(){
-  const res = await fetch(API,{
-    method:"POST",
-    headers:{ "Content-Type":"application/json" },
-    body:JSON.stringify({action:"check_visit",lineId:state.lineId})
-  });
-
-  const data = await res.json();
-
-  if(data.isFirstVisit){
-    location.href="form.html";
-  } else {
-    loadMyPage();
+// ===== API呼び出し =====
+async function callAPI(body) {
+  try {
+    const res = await fetch(ENV.API_BASE, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (e) {
+    showToast('通信エラーが発生しました');
+    return null;
   }
 }
 
-// ================= マイページ =================
-async function loadMyPage(){
-  const res = await fetch(API,{
-    method:"POST",
-    headers:{ "Content-Type":"application/json" },
-    body:JSON.stringify({action:"get_myPage",lineId:state.lineId})
-  });
+// ===== 初期化 =====
+async function init() {
+  try {
+    await liff.init({ liffId: ENV.LIFF_ID });
+    if (!liff.isLoggedIn()) { liff.login(); return; }
 
-  const data = await res.json();
+    const profile = await liff.getProfile();
+    state.lineId = profile.userId;
+
+    // 初回訪問チェック
+    const visitData = await callAPI({ action: 'check_visit', lineId: state.lineId });
+    if (!visitData) return;
+
+    if (visitData.isFirstVisit) {
+      location.href = 'form.html?mode=new';
+    } else {
+      await loadMyPage();
+    }
+  } catch (e) {
+    showToast('初期化に失敗しました');
+  }
+}
+
+// ===== マイページ読み込み =====
+async function loadMyPage() {
+  showView('loading');
+  const data = await callAPI({ action: 'get_myPage', lineId: state.lineId });
+  if (!data) return;
+
   state.reservations = data.items || [];
-
   renderMyPage();
 }
 
-// ================= 一覧表示 =================
-function renderMyPage(){
+// ===== マイページ表示 =====
+function showMyPage() {
+  state.currentReserve = null;
+  document.getElementById('headerTitle').textContent = '予約一覧';
+  document.getElementById('backBtn').style.display = 'none';
+  document.getElementById('newBtn').style.display = 'block';
+  renderMyPage();
+}
 
-  let html="<h3 style='padding:10px;'>予約一覧</h3>";
+function renderMyPage() {
+  showView('mypage');
+  const el = document.getElementById('mypage');
 
-  state.reservations.forEach(r=>{
-    html+=`
-      <div class="card">
-        第1希望：${r.date1}<br>
-        状態：${r.status || "未確定"}<br>
+  if (state.reservations.length === 0) {
+    el.innerHTML = `
+      <div class="empty-state">
+        <div class="icon">🧺</div>
+        <p>予約はまだありません<br>右上のボタンから新規予約できます</p>
+      </div>`;
+    return;
+  }
 
-        <button onclick="goDetail('${r.reserveid}')">詳細</button>
-        <button onclick="goReReserve('${r.reserveid}')">再予約</button>
-      </div>
-    `;
+  el.innerHTML = state.reservations.map(r => {
+    const badge = getStatusBadge(r.status);
+    const msgBadge = (r.messageCount > 0)
+      ? `<div class="msg-badge">${r.messageCount}</div>` : '';
+    const dateText = r.datetime
+      ? `確定：${formatDate(r.datetime)}`
+      : `第1希望：${r.date1 || '未設定'}`;
+    const subText = [r.date2 && `第2希望：${r.date2}`, r.date3 && `第3希望：${r.date3}`]
+      .filter(Boolean).join('<br>');
+
+    return `
+      <div class="reserve-card" onclick="goDetail('${r.reserveid}')">
+        <span class="status-badge ${badge.cls}">${badge.label}</span>
+        ${msgBadge}
+        <div class="date-main">${dateText}</div>
+        ${subText ? `<div class="date-sub">${subText}</div>` : ''}
+        <div class="card-arrow">›</div>
+      </div>`;
+  }).join('');
+}
+
+// ===== 詳細 + チャット =====
+async function goDetail(reserveid) {
+  showView('loading');
+
+  const data = await callAPI({
+    action: 'get_reserve_detail',
+    lineId: state.lineId,
+    reserveid: reserveid
   });
+  if (!data || !data.reserve) { showToast('詳細の取得に失敗しました'); return; }
 
-  html+=`<button onclick="goForm()">新規予約</button>`;
+  state.currentReserve = data.reserve;
+  state.messages = data.messages || [];
 
-  document.getElementById("app").innerHTML=html;
+  document.getElementById('headerTitle').textContent = '予約詳細';
+  document.getElementById('backBtn').style.display = 'block';
+  document.getElementById('newBtn').style.display = 'none';
+
+  renderDetail();
+  showView('detail-view');
+  scrollChatBottom();
 }
 
-// ================= 詳細 =================
-async function goDetail(id){
+function renderDetail() {
+  const r = state.currentReserve;
+  const badge = getStatusBadge(r.status);
 
-  const res = await fetch(API,{
-    method:"POST",
-    headers:{ "Content-Type":"application/json" },
-    body:JSON.stringify({
-      action:"get_reserve_detail",
-      lineId:state.lineId,
-      reserveid:id
-    })
-  });
-
-  const data = await res.json();
-
-  state.selected=data.reserve;
-  state.messages=data.messages;
-
-  renderDetailChat();
-}
-
-// ================= 再予約 =================
-function goReReserve(id){
-  location.href = `form.html?mode=re&reserveid=${id}`;
-}
-
-// ================= 新規予約 =================
-function goForm(){
-  location.href="form.html?mode=new";
-}
-
-// ================= 詳細＋チャット =================
-function renderDetailChat(){
-
-  let html=`
-    <div id="detail">
-      <b>${state.selected.name}</b><br>
-      ${state.selected.request_1}<br>
-      状態：${state.selected.status}<br>
-
-      <button onclick="loadMyPage()">戻る</button>
+  document.getElementById('reserve-info').innerHTML = `
+    <div class="info-row">
+      <span class="info-label">ステータス</span>
+      <span class="info-status ${badge.cls} status-badge">${badge.label}</span>
     </div>
-
-    <div id="chat">
+    ${r.datetime ? `
+    <div class="info-row">
+      <span class="info-label">確定日時</span>
+      <span class="info-val">${formatDate(r.datetime)}</span>
+    </div>` : `
+    <div class="info-row">
+      <span class="info-label">第1希望</span>
+      <span class="info-val">${r.request_1 || '—'}</span>
+    </div>
+    <div class="info-row">
+      <span class="info-label">第2希望</span>
+      <span class="info-val">${r.request_2 || '—'}</span>
+    </div>
+    <div class="info-row">
+      <span class="info-label">第3希望</span>
+      <span class="info-val">${r.request_3 || '—'}</span>
+    </div>`}
+    <div class="info-row">
+      <span class="info-label">洗濯機</span>
+      <span class="info-val">${r.macinetype || '—'}${r.macinecode ? ' / ' + r.macinecode : ''}</span>
+    </div>
   `;
 
-  (state.messages || []).forEach(m=>{
-    html+=`<div class="msg ${m.sender==="user"?"me":"other"}">${m.message}</div>`;
+  const chatEl = document.getElementById('chat-area');
+  if (state.messages.length === 0) {
+    chatEl.innerHTML = `<div class="chat-date-divider">メッセージはまだありません</div>`;
+    return;
+  }
+
+  chatEl.innerHTML = state.messages.map(m => {
+    const isMe = m.sender === 'user' || m.sender === '利用者';
+    const timeStr = m.datetime ? formatTime(m.datetime) : '';
+    return `
+      <div class="chat-bubble ${isMe ? 'me' : 'other'}">
+        ${escapeHtml(m.message)}
+        ${timeStr ? `<div class="bubble-time">${timeStr}</div>` : ''}
+      </div>`;
+  }).join('');
+}
+
+// ===== メッセージ送信 =====
+async function sendMsg() {
+  if (state.sending) return;
+  const input = document.getElementById('msgInput');
+  const text = input.value.trim();
+  if (!text) return;
+
+  const r = state.currentReserve;
+  if (!r || !r.franchise_id || !r.franchise_lineid) {
+    showToast('送信先情報が不足しています');
+    return;
+  }
+
+  state.sending = true;
+  document.getElementById('sendBtn').disabled = true;
+  input.value = '';
+
+  const result = await callAPI({
+    action: 'send_message',
+    lineId: state.lineId,
+    reserveid: state.currentReserve.reserveid || state.currentReserve.franchise_id,
+    franchise_id: r.franchise_id,
+    franchise_lineid: r.franchise_lineid,
+    message: text
   });
 
-  html+=`
-    </div>
+  state.sending = false;
+  document.getElementById('sendBtn').disabled = false;
 
-    <div id="input">
-      <input id="msgInput">
-      <button onclick="sendMsg()">送信</button>
-    </div>
-  `;
-
-  document.getElementById("app").innerHTML=html;
-
-  scrollBottom();
+  if (result && result.result === 'success') {
+    // 楽観的UI更新
+    state.messages.push({
+      sender: 'user',
+      message: text,
+      datetime: new Date().toISOString()
+    });
+    renderDetail();
+    scrollChatBottom();
+  } else {
+    showToast('送信に失敗しました');
+    input.value = text;
+  }
 }
 
-// ================= メッセージ送信 =================
-async function sendMsg(){
+// Enterキーで送信
+document.getElementById('msgInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMsg();
+  }
+});
 
-  const text=document.getElementById("msgInput").value;
+// ===== 新規予約 =====
+function goForm() {
+  location.href = 'form.html?mode=new';
+}
 
-  if(!text) return;
-
-  await fetch(API,{
-    method:"POST",
-    headers:{ "Content-Type":"application/json" },
-    body:JSON.stringify({
-      action:"send_message",
-      lineId:state.lineId,
-      reserveid:state.selected.reserveid,
-      message:text
-    })
+// ===== ビュー切り替え =====
+function showView(id) {
+  ['loading', 'mypage', 'detail-view'].forEach(v => {
+    const el = document.getElementById(v);
+    if (v === 'mypage') {
+      el.style.display = (v === id) ? 'flex' : 'none';
+    } else {
+      el.style.display = (v === id) ? 'flex' : 'none';
+    }
   });
-
-  document.getElementById("msgInput").value="";
-
-  goDetail(state.selected.reserveid);
 }
 
-// ================= スクロール =================
-function scrollBottom(){
-  const el=document.getElementById("chat");
-  el.scrollTop=el.scrollHeight;
+// ===== ユーティリティ =====
+function getStatusBadge(status) {
+  if (!status) return { cls: 'default', label: '未確定' };
+  if (status.includes('確定') || status === 'confirmed') return { cls: 'confirmed', label: '確定' };
+  if (status.includes('キャンセル') || status === 'cancelled') return { cls: 'cancelled', label: 'キャンセル' };
+  return { cls: 'pending', label: status };
 }
 
+function formatDate(str) {
+  if (!str) return '—';
+  try {
+    const d = new Date(str);
+    return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+  } catch { return str; }
+}
+
+function formatTime(str) {
+  if (!str) return '';
+  try {
+    const d = new Date(str);
+    return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+  } catch { return ''; }
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/\n/g,'<br>');
+}
+
+function scrollChatBottom() {
+  setTimeout(() => {
+    const el = document.getElementById('chat-area');
+    if (el) el.scrollTop = el.scrollHeight;
+  }, 50);
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ===== 起動 =====
 init();
-
 </script>
 </body>
 </html>
