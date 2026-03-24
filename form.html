@@ -2,307 +2,886 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>ピカまる本舗 予約フォーム</title>
 <script src="env.js"></script>
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-
 <style>
-body { margin:0; font-family:sans-serif; background:#e5ddd5; }
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap');
 
-#chat { padding:10px; height:60vh; overflow-y:auto; }
+  :root {
+    --primary: #00B900;
+    --primary-dark: #009900;
+    --primary-light: #e8f9e8;
+    --bg: #f0f2f5;
+    --white: #ffffff;
+    --text: #1a1a1a;
+    --text-muted: #888;
+    --border: #e0e0e0;
+    --bubble-bot: #ffffff;
+    --bubble-user: #c8f7a0;
+    --shadow: 0 2px 8px rgba(0,0,0,0.08);
+    --radius: 12px;
+  }
 
-.message { max-width:75%; margin:10px; padding:12px; border-radius:10px; }
-.bot { background:#fff; }
-.user { background:#dcf8c6; margin-left:auto; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
 
-.btn {
-  display:block;
-  margin:8px 0;
-  padding:15px;
-  font-size:16px;
-  background:#4CAF50;
-  color:white;
-  border:none;
-  border-radius:8px;
-}
+  body {
+    font-family: 'Noto Sans JP', sans-serif;
+    background: var(--bg);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
 
-.btn.selected { background:#ff9800; }
+  /* ===== ヘッダー ===== */
+  #header {
+    background: var(--primary);
+    color: white;
+    padding: 14px 16px;
+    flex-shrink: 0;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+  }
+  #header h1 { font-size: 17px; font-weight: 700; }
+  #header p { font-size: 12px; opacity: 0.85; margin-top: 2px; }
 
-/* フォーム */
-#formArea {
-  display:none;
-  padding:15px;
-  background:#fff;
-}
+  /* ===== プログレスバー ===== */
+  #progress-bar {
+    background: var(--primary-dark);
+    height: 4px;
+    flex-shrink: 0;
+  }
+  #progress-fill {
+    height: 100%;
+    background: white;
+    transition: width 0.4s ease;
+    width: 0%;
+  }
 
-#formArea input, textarea {
-  width:100%;
-  padding:10px;
-  margin:5px 0;
-}
+  /* ===== チャット エリア ===== */
+  #chat {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 12px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .bubble {
+    max-width: 82%;
+    padding: 10px 14px;
+    border-radius: 14px;
+    font-size: 14px;
+    line-height: 1.6;
+    animation: fadeIn 0.25s ease;
+  }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+
+  .bubble.bot {
+    background: var(--bubble-bot);
+    align-self: flex-start;
+    border-bottom-left-radius: 4px;
+    box-shadow: var(--shadow);
+    color: var(--text);
+  }
+  .bubble.user {
+    background: var(--bubble-user);
+    align-self: flex-end;
+    border-bottom-right-radius: 4px;
+    color: var(--text);
+  }
+
+  /* ===== ボタン群 ===== */
+  .btn-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-self: flex-start;
+    width: 100%;
+    max-width: 300px;
+    animation: fadeIn 0.25s ease;
+  }
+
+  .choice-btn {
+    background: var(--white);
+    border: 2px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 16px;
+    font-size: 14px;
+    font-family: inherit;
+    font-weight: 500;
+    text-align: left;
+    cursor: pointer;
+    transition: all 0.15s;
+    color: var(--text);
+  }
+  .choice-btn:hover, .choice-btn:active {
+    border-color: var(--primary);
+    background: var(--primary-light);
+    color: var(--primary-dark);
+  }
+  .choice-btn.selected {
+    border-color: var(--primary);
+    background: var(--primary-light);
+    color: var(--primary-dark);
+  }
+  .choice-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* 日程選択ボタン */
+  .slot-btn {
+    background: var(--white);
+    border: 2px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: 13px;
+    font-family: inherit;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    color: var(--text);
+    position: relative;
+  }
+  .slot-btn .slot-num {
+    display: inline-block;
+    background: var(--primary);
+    color: white;
+    font-size: 10px;
+    font-weight: 700;
+    border-radius: 50%;
+    width: 18px; height: 18px;
+    text-align: center;
+    line-height: 18px;
+    margin-right: 6px;
+  }
+  .slot-btn.selected-1 { border-color: var(--primary); background: var(--primary-light); }
+  .slot-btn.selected-2 { border-color: #2196f3; background: #e3f2fd; }
+  .slot-btn.selected-3 { border-color: #ff9800; background: #fff8e1; }
+  .slot-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ===== 入力フォーム ===== */
+  .input-form {
+    background: var(--white);
+    border-radius: var(--radius);
+    padding: 14px;
+    box-shadow: var(--shadow);
+    align-self: stretch;
+    animation: fadeIn 0.25s ease;
+  }
+  .input-form .form-field {
+    margin-bottom: 12px;
+  }
+  .input-form label {
+    display: block;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+  }
+  .input-form label .required {
+    color: #f44336;
+    margin-left: 3px;
+  }
+  .input-form input,
+  .input-form textarea,
+  .input-form select {
+    width: 100%;
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    padding: 9px 12px;
+    font-size: 14px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.2s;
+    color: var(--text);
+    background: white;
+  }
+  .input-form input:focus,
+  .input-form textarea:focus { border-color: var(--primary); }
+  .input-form textarea { resize: none; height: 72px; }
+
+  /* ===== 送信ボタン ===== */
+  .submit-btn {
+    width: 100%;
+    background: var(--primary);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    padding: 14px;
+    font-size: 16px;
+    font-weight: 700;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.2s;
+    margin-top: 4px;
+  }
+  .submit-btn:active { background: var(--primary-dark); }
+  .submit-btn:disabled { background: #ccc; cursor: not-allowed; }
+
+  /* ===== ローディングドット ===== */
+  .typing {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    padding: 10px 14px;
+    background: var(--bubble-bot);
+    border-radius: 14px;
+    border-bottom-left-radius: 4px;
+    align-self: flex-start;
+    box-shadow: var(--shadow);
+  }
+  .typing span {
+    width: 7px; height: 7px;
+    background: var(--text-muted);
+    border-radius: 50%;
+    animation: bounce 1.2s infinite;
+  }
+  .typing span:nth-child(2) { animation-delay: 0.2s; }
+  .typing span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes bounce {
+    0%, 80%, 100% { transform: scale(0.7); opacity: 0.5; }
+    40% { transform: scale(1); opacity: 1; }
+  }
+
+  /* ===== 完了画面 ===== */
+  #complete {
+    display: none;
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 32px;
+    text-align: center;
+  }
+  #complete .check-icon {
+    width: 72px; height: 72px;
+    background: var(--primary);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 36px;
+    color: white;
+    animation: popIn 0.4s cubic-bezier(0.175,0.885,0.32,1.275);
+  }
+  @keyframes popIn { from { transform:scale(0); } to { transform:scale(1); } }
+  #complete h2 { font-size: 20px; color: var(--text); }
+  #complete p { font-size: 14px; color: var(--text-muted); line-height: 1.7; }
+  #complete .back-link {
+    background: var(--primary);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    padding: 12px 28px;
+    font-size: 15px;
+    font-weight: 700;
+    font-family: inherit;
+    cursor: pointer;
+    margin-top: 8px;
+  }
+
+  /* ===== エラートースト ===== */
+  #toast {
+    position: fixed;
+    bottom: 20px; left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: #323232;
+    color: white;
+    padding: 10px 20px;
+    border-radius: 20px;
+    font-size: 13px;
+    opacity: 0;
+    transition: all 0.3s;
+    pointer-events: none;
+    z-index: 999;
+    white-space: nowrap;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 </style>
 </head>
-
 <body>
 
-<div id="chat"></div>
+<div id="header">
+  <h1>🧺 洗濯機クリーニング予約</h1>
+  <p>ピカまる本舗</p>
+</div>
+<div id="progress-bar"><div id="progress-fill"></div></div>
 
-<div id="formArea"></div>
+<div id="chat"></div>
+<div id="complete">
+  <div class="check-icon">✓</div>
+  <h2>予約を受け付けました！</h2>
+  <p>加盟店が内容を確認後、<br>日程を調整してご連絡します。</p>
+  <button class="back-link" onclick="location.href='index.html'">マイページへ</button>
+</div>
+
+<div id="toast"></div>
 
 <script>
+// ===== 状態 =====
+const state = {
+  lineId: null,
+  step: 0,
+  userData: {
+    // check_maker から
+    makerData: [],
+    // 選択値
+    maker: null,
+    type: null,       // 縦 or ドラム（Logic Apps: model_type）
+    model_number: '',
+    // get_franchise から
+    franchiseList: [],
+    prefecture: null,
+    franchise_id: null,
+    franchise_name: null,
+    franchise_lineid: null,
+    // get_calendar から
+    calendarSlots: [],
+    selectedDates: [],
+    // フォーム入力
+    used: '',
+    symptoms: '',
+    name: '',
+    postcode: '',
+    address: '',
+    tel: '',
+    email: '',
+    parking: ''
+  }
+};
 
-// ================= 状態 =================
-let userId="";
-let userData={};
-let makerData=[];
-let calendarSlots=[];
-let selectedDates=[];
+// 総ステップ数（プログレスバー用）
+const TOTAL_STEPS = 10;
 
-// ================= API =================
-async function callAPI(action, body={}){
-  const res = await fetch(ENV.API_BASE,{
-    method:"POST",
-    headers:{ "Content-Type":"application/json" },
-    body:JSON.stringify({action,...body})
-  });
-  return await res.json();
+// ===== API =====
+async function callAPI(body) {
+  try {
+    const res = await fetch(ENV.API_BASE, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (e) {
+    showToast('通信エラーが発生しました');
+    return null;
+  }
 }
 
-// ================= 初期化 =================
-async function init(){
-
+// ===== 初期化 =====
+async function init() {
   await liff.init({ liffId: ENV.LIFF_ID });
-
-  if(!liff.isLoggedIn()){
-    liff.login();
-    return;
-  }
+  if (!liff.isLoggedIn()) { liff.login(); return; }
 
   const profile = await liff.getProfile();
-  userId = profile.userId;
+  state.lineId = profile.userId;
 
-  const maker = await callAPI("check_maker");
-  makerData = maker.items;
+  // 洗濯機分類マスタ取得（check_maker）
+  showTyping();
+  const makerRes = await callAPI({ action: 'check_maker', lineId: state.lineId });
+  removeTyping();
 
-  ask("こんにちは！予約を開始します");
-  ask("お名前を教えてください");
+  if (!makerRes || !makerRes.items) {
+    addBubble('bot', 'データの読み込みに失敗しました。しばらく後にお試しください。');
+    return;
+  }
+  state.userData.makerData = makerRes.items; // [{pattern, maker, type}]
 
-  step=1;
+  addBubble('bot', 'こんにちは！洗濯機クリーニングのご予約を承ります😊');
+  await delay(400);
+  stepAskMachineType();
 }
 
-// ================= UI =================
-function addMessage(text,type="bot"){
-  const div=document.createElement("div");
-  div.className="message "+type;
-  div.innerText=text;
-  chat.appendChild(div);
-  chat.scrollTop=chat.scrollHeight;
-}
+// ===== Step 1: 洗濯機の種類 =====
+function stepAskMachineType() {
+  setProgress(1);
+  addBubble('bot', '洗濯機の種類を教えてください。');
 
-function ask(text){
-  setTimeout(()=>addMessage(text),300);
-}
+  const types = [...new Set(state.userData.makerData.map(m => m.type))].filter(Boolean);
+  // 型名が「縦」「ドラム」等に対応
+  const labels = { '縦': '縦型洗濯機', 'ドラム': 'ドラム式洗濯機' };
 
-function showButtons(list,callback){
-  const div=document.createElement("div");
-  div.className="message bot";
-
-  list.forEach(v=>{
-    const b=document.createElement("button");
-    b.className="btn";
-    b.innerText=v;
-
-    b.onclick=()=>{
-      addMessage(v,"user");
-      callback(v);
-    };
-
-    div.appendChild(b);
+  addButtons(types.map(t => ({ label: labels[t] || t, value: t })), (val) => {
+    state.userData.type = val;
+    addBubble('user', labels[val] || val);
+    stepAskMaker();
   });
-
-  chat.appendChild(div);
 }
 
-// ================= ステップ =================
-let step=0;
+// ===== Step 2: メーカー選択 =====
+function stepAskMaker() {
+  setProgress(2);
+  addBubble('bot', 'メーカーを選択してください。');
 
-function handle(val){
+  const filtered = state.userData.makerData.filter(m => m.type === state.userData.type);
+  const makers = [...new Set(filtered.map(m => m.maker))].filter(Boolean);
 
-switch(step){
-
-case 1:
-  userData.name=val;
-  ask("お住まいの都道府県はどこですか？");
-  showButtons(["東京","神奈川","千葉","埼玉","静岡","愛知"],v=>handle(v));
-  step=2;
-  break;
-
-case 2:
-  userData.pref=val;
-  ask("ご利用の洗濯機メーカーはどこですか？");
-
-  const makers=[...new Set(makerData.map(m=>m.maker))];
-  showButtons(makers,v=>handle(v));
-
-  step=3;
-  break;
-
-case 3:
-  userData.maker=val;
-
-  const patterns = makerData.filter(m=>m.maker===val);
-
-  ask("型パターンを選択してください");
-
-  showButtons(patterns.map(p=>p.pattern),v=>{
-    const m=patterns.find(x=>x.pattern===v);
-    userData.type=m.type;
-
-    ask("型番を入力してください（任意）");
-    step=4;
+  addButtons(makers.map(m => ({ label: m, value: m })), (val) => {
+    state.userData.maker = val;
+    addBubble('user', val);
+    stepAskModelNumber();
   });
-
-  break;
-
-case 4:
-  userData.model=val;
-  fetchShops();
-  step=5;
-  break;
-
-}
 }
 
-// ================= 加盟店 =================
-async function fetchShops(){
-
-  ask("加盟店を検索しています");
-
-  const data = await callAPI("get_franchise",{
-    prefecture:userData.pref,
-    type:userData.type
+// ===== Step 3: 型番入力 =====
+function stepAskModelNumber() {
+  setProgress(3);
+  addBubble('bot', '型番を入力してください。\n（わからない場合は「わからない」と入力してください）');
+  addTextInput('例：AQW-VX12P', false, (val) => {
+    state.userData.model_number = val === 'わからない' ? '' : val;
+    addBubble('user', val);
+    stepAskUsedYears();
   });
+}
 
-  if(!data.items || data.items.length===0){
-    ask("申し訳ありませんが対応可能な加盟店がありません。");
+// ===== Step 4: 使用年数 =====
+function stepAskUsedYears() {
+  setProgress(4);
+  addBubble('bot', '洗濯機の使用年数はどのくらいですか？');
+  addButtons([
+    { label: '1年未満', value: '1年未満' },
+    { label: '1〜3年', value: '1〜3年' },
+    { label: '3〜5年', value: '3〜5年' },
+    { label: '5〜10年', value: '5〜10年' },
+    { label: '10年以上', value: '10年以上' }
+  ], (val) => {
+    state.userData.used = val;
+    addBubble('user', val);
+    stepAskSymptoms();
+  });
+}
+
+// ===== Step 5: お悩み =====
+function stepAskSymptoms() {
+  setProgress(5);
+  addBubble('bot', 'どのようなお悩みがありますか？（複数選択可）\n選択後「次へ」を押してください。');
+  addMultiSelect([
+    '汚れが気になる', 'においが気になる', '動作が不安定',
+    '定期メンテナンス', 'その他'
+  ], (vals) => {
+    state.userData.symptoms = vals.join('、');
+    addBubble('user', state.userData.symptoms);
+    stepAskPrefecture();
+  });
+}
+
+// ===== Step 6: 都道府県 =====
+function stepAskPrefecture() {
+  setProgress(6);
+  addBubble('bot', 'お住まいの都道府県を選択してください。');
+
+  // 加盟店マスタから動的に都道府県を生成するのが理想だが、
+  // get_franchise は prefecture + type が必要なため、よく使われる都道府県を表示
+  // 本番は別途 prefecture_list API を追加することを推奨
+  const prefs = ['茨城県','栃木県','群馬県','埼玉県','千葉県','東京都','神奈川県','静岡県','愛知県'];
+
+  addScrollSelect(prefs, async (val) => {
+    state.userData.prefecture = val;
+    addBubble('user', val);
+    await stepFetchFranchise();
+  });
+}
+
+// ===== Step 7: 加盟店選択 =====
+async function stepFetchFranchise() {
+  setProgress(7);
+  showTyping();
+
+  const data = await callAPI({
+    action: 'get_franchise',
+    lineId: state.lineId,
+    prefecture: state.userData.prefecture,
+    type: state.userData.type
+  });
+  removeTyping();
+
+  if (!data || !data.items || data.items.length === 0) {
+    addBubble('bot', '申し訳ありません。ご指定のエリアに対応可能な加盟店が見つかりませんでした。\n別の都道府県をお試しください。');
+    await delay(300);
+    stepAskPrefecture();
     return;
   }
 
-  ask("ご希望の加盟店を選択してください");
+  state.userData.franchiseList = data.items;
+  addBubble('bot', '対応可能な加盟店が見つかりました。ご希望の加盟店を選択してください。');
 
-  showButtons(data.items.map(x=>x.name),v=>{
-    const shop=data.items.find(x=>x.name===v);
-    userData.shop=shop.name;
-    userData.franchise_id=shop.franchise_id;
-
-    fetchCalendar();
+  addButtons(data.items.map(s => ({
+    label: s.name,
+    value: s.franchise_id,
+    sub: s.address
+  })), async (val) => {
+    const shop = state.userData.franchiseList.find(s => s.franchise_id === val);
+    state.userData.franchise_id = shop.franchise_id;
+    state.userData.franchise_name = shop.name;
+    state.userData.franchise_lineid = shop.franchise_lineid;
+    addBubble('user', shop.name);
+    await stepFetchCalendar();
   });
 }
 
-// ================= カレンダー =================
-async function fetchCalendar(){
+// ===== Step 8: 日程選択 =====
+async function stepFetchCalendar() {
+  setProgress(8);
+  showTyping();
 
-  ask("空き枠を取得しています");
+  const data = await callAPI({
+    action: 'get_calendar',
+    lineId: state.lineId,
+    franchise_id: state.userData.franchise_id
+  });
+  removeTyping();
 
-  const data = await callAPI("get_calendar",{
-    franchise_id:userData.franchise_id
+  if (!data || !data.date || data.date.length === 0) {
+    addBubble('bot', '現在この加盟店の空き枠がありません。別の加盟店をお選びください。');
+    await delay(300);
+    stepAskPrefecture();
+    return;
+  }
+
+  state.userData.calendarSlots = data.date.filter(Boolean);
+  state.userData.selectedDates = [];
+
+  addBubble('bot', '希望日時を最大3つ選択してください（優先順位順）。\n選択後「確定」を押してください。');
+  addSlotSelect(state.userData.calendarSlots, (dates) => {
+    state.userData.selectedDates = dates;
+    addBubble('user', `第1希望：${dates[0]}${dates[1] ? '\n第2希望：'+dates[1] : ''}${dates[2] ? '\n第3希望：'+dates[2] : ''}`);
+    stepShowForm();
+  });
+}
+
+// ===== Step 9: お客様情報入力 =====
+function stepShowForm() {
+  setProgress(9);
+  addBubble('bot', 'お客様の情報を入力してください。');
+
+  const formHtml = `
+    <div class="input-form">
+      <div class="form-field">
+        <label>お名前<span class="required">*</span></label>
+        <input id="f_name" type="text" placeholder="山田 太郎">
+      </div>
+      <div class="form-field">
+        <label>電話番号<span class="required">*</span></label>
+        <input id="f_tel" type="tel" placeholder="090-1234-5678">
+      </div>
+      <div class="form-field">
+        <label>メールアドレス</label>
+        <input id="f_email" type="email" placeholder="example@mail.com">
+      </div>
+      <div class="form-field">
+        <label>郵便番号<span class="required">*</span></label>
+        <input id="f_postcode" type="text" placeholder="123-4567" maxlength="8">
+      </div>
+      <div class="form-field">
+        <label>住所<span class="required">*</span></label>
+        <input id="f_address" type="text" placeholder="東京都〇〇区...">
+      </div>
+      <div class="form-field">
+        <label>駐車場</label>
+        <select id="f_parking">
+          <option value="">選択してください</option>
+          <option value="あり">あり</option>
+          <option value="なし">なし</option>
+          <option value="近隣有料">近隣有料</option>
+        </select>
+      </div>
+      <button class="submit-btn" onclick="submitReserve()">予約を確定する</button>
+    </div>
+  `;
+
+  const chat = document.getElementById('chat');
+  const div = document.createElement('div');
+  div.id = 'form-container';
+  div.innerHTML = formHtml;
+  chat.appendChild(div);
+  scrollBottom();
+  setTimeout(() => div.querySelector('#f_name').focus(), 300);
+}
+
+// ===== Step 10: 予約送信 =====
+async function submitReserve() {
+  const name = document.getElementById('f_name').value.trim();
+  const tel = document.getElementById('f_tel').value.trim();
+  const postcode = document.getElementById('f_postcode').value.trim();
+  const address = document.getElementById('f_address').value.trim();
+
+  if (!name || !tel || !postcode || !address) {
+    showToast('必須項目を入力してください');
+    return;
+  }
+
+  const btn = document.querySelector('.submit-btn');
+  btn.disabled = true;
+  btn.textContent = '送信中...';
+
+  const body = {
+    action: 'submit_reserve',
+    lineId: state.lineId,
+    name,
+    tel,
+    email: document.getElementById('f_email').value.trim(),
+    postcode,
+    address,
+    parking: document.getElementById('f_parking').value,
+    // Logic Apps のフィールド名に合わせる
+    used: state.userData.used,
+    symptoms: state.userData.symptoms,
+    model_type: state.userData.type,      // cra25_macinetype
+    model_number: state.userData.model_number, // cra25_macinecode
+    franchise_id: state.userData.franchise_id,
+    request1: state.userData.selectedDates[0] || '',
+    request2: state.userData.selectedDates[1] || '',
+    request3: state.userData.selectedDates[2] || ''
+  };
+
+  setProgress(10);
+  const result = await callAPI(body);
+
+  if (result && result.result === 'success') {
+    document.getElementById('chat').style.display = 'none';
+    document.getElementById('complete').style.display = 'flex';
+  } else {
+    btn.disabled = false;
+    btn.textContent = '予約を確定する';
+    showToast('予約の送信に失敗しました。もう一度お試しください。');
+  }
+}
+
+// ===== UI ヘルパー =====
+function addBubble(type, text) {
+  const chat = document.getElementById('chat');
+  const div = document.createElement('div');
+  div.className = `bubble ${type}`;
+  div.innerHTML = text.replace(/\n/g, '<br>');
+  chat.appendChild(div);
+  scrollBottom();
+}
+
+function addButtons(items, callback) {
+  const chat = document.getElementById('chat');
+  const group = document.createElement('div');
+  group.className = 'btn-group';
+
+  items.forEach(item => {
+    const btn = document.createElement('button');
+    btn.className = 'choice-btn';
+    btn.innerHTML = item.label + (item.sub ? `<br><small style="color:#888;font-weight:400">${item.sub}</small>` : '');
+    btn.onclick = () => {
+      // ボタン全無効化
+      group.querySelectorAll('button').forEach(b => b.disabled = true);
+      btn.classList.add('selected');
+      callback(item.value);
+    };
+    group.appendChild(btn);
   });
 
-  calendarSlots=data.date;
+  chat.appendChild(group);
+  scrollBottom();
+}
 
-  ask("希望日時を3つ選択してください（優先順）");
+function addScrollSelect(items, callback) {
+  const chat = document.getElementById('chat');
+  const wrap = document.createElement('div');
+  wrap.className = 'input-form';
+  wrap.style.alignSelf = 'stretch';
 
-  const div=document.createElement("div");
-  div.className="message bot";
+  const sel = document.createElement('select');
+  sel.style.cssText = 'width:100%;border:1.5px solid #e0e0e0;border-radius:8px;padding:9px 12px;font-size:14px;font-family:inherit;outline:none;';
+  sel.innerHTML = '<option value="">都道府県を選択...</option>' +
+    items.map(p => `<option value="${p}">${p}</option>`).join('');
 
-  calendarSlots.forEach(slot=>{
-    const b=document.createElement("button");
-    b.className="btn";
-    b.innerText=slot;
+  const btn = document.createElement('button');
+  btn.className = 'submit-btn';
+  btn.style.marginTop = '10px';
+  btn.textContent = '次へ';
+  btn.onclick = () => {
+    if (!sel.value) { showToast('都道府県を選択してください'); return; }
+    sel.disabled = true;
+    btn.disabled = true;
+    callback(sel.value);
+  };
 
-    b.onclick=()=>{
-      if(selectedDates.length>=3) return;
+  wrap.appendChild(sel);
+  wrap.appendChild(btn);
+  chat.appendChild(wrap);
+  scrollBottom();
+}
 
-      selectedDates.push(slot);
-      b.classList.add("selected");
+function addMultiSelect(items, callback) {
+  const chat = document.getElementById('chat');
+  const group = document.createElement('div');
+  group.className = 'btn-group';
+  group.style.maxWidth = '100%';
 
-      if(selectedDates.length===3){
-        userData.date1=selectedDates[0];
-        userData.date2=selectedDates[1];
-        userData.date3=selectedDates[2];
+  const selected = new Set();
 
-        showForm(); // ★ここが重要
+  items.forEach(item => {
+    const btn = document.createElement('button');
+    btn.className = 'choice-btn';
+    btn.textContent = item;
+    btn.onclick = () => {
+      if (selected.has(item)) {
+        selected.delete(item);
+        btn.classList.remove('selected');
+      } else {
+        selected.add(item);
+        btn.classList.add('selected');
       }
     };
-
-    div.appendChild(b);
+    group.appendChild(btn);
   });
 
-  chat.appendChild(div);
+  const nextBtn = document.createElement('button');
+  nextBtn.className = 'submit-btn';
+  nextBtn.textContent = '次へ →';
+  nextBtn.onclick = () => {
+    if (selected.size === 0) { showToast('1つ以上選択してください'); return; }
+    group.querySelectorAll('button').forEach(b => b.disabled = true);
+    callback([...selected]);
+  };
+  group.appendChild(nextBtn);
+  chat.appendChild(group);
+  scrollBottom();
 }
 
-// ================= フォーム表示 =================
-function showForm(){
+function addSlotSelect(slots, callback) {
+  const chat = document.getElementById('chat');
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'align-self:stretch;animation:fadeIn 0.25s ease;';
 
-  ask("詳細情報を入力してください");
+  const selected = []; // 最大3件
+  const btnMap = {};
 
-  formArea.style.display="block";
+  const grid = document.createElement('div');
+  grid.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
 
-  formArea.innerHTML=`
-    郵便番号<input id="postcode">
-    住所<input id="address">
-    電話番号<input id="tel">
-    メール<input id="email">
-    症状<textarea id="symptoms"></textarea>
+  slots.forEach(slot => {
+    const btn = document.createElement('button');
+    btn.className = 'slot-btn';
+    btn.innerHTML = `<span class="slot-num" style="display:none">?</span>${slot}`;
+    btnMap[slot] = btn;
 
-    <button class="btn" onclick="submit()">予約する</button>
-  `;
-}
-
-// ================= 送信 =================
-async function submit(){
-
-  const data = await callAPI("submit_reserve",{
-    lineId:userId,
-    name:userData.name,
-    postcode:postcode.value,
-    address:address.value,
-    tel:tel.value,
-    email:email.value,
-    symptoms:symptoms.value,
-    franchise_id:userData.franchise_id,
-    model_type:userData.type,
-    request1:userData.date1,
-    request2:userData.date2,
-    request3:userData.date3
-  });
-
-  if(data.result==="success"){
-    ask("予約が完了しました！");
-  }else{
-    ask("予約に失敗しました");
-  }
-}
-
-// ================= 入力 =================
-document.body.addEventListener("keydown",e=>{
-  if(e.key==="Enter"){
-    const input=document.getElementById("input");
-    if(input){
-      const val=input.value;
-      if(val){
-        addMessage(val,"user");
-        input.value="";
-        handle(val);
+    btn.onclick = () => {
+      const idx = selected.indexOf(slot);
+      if (idx >= 0) {
+        // 選択解除
+        selected.splice(idx, 1);
+        btn.className = 'slot-btn';
+        btn.querySelector('.slot-num').style.display = 'none';
+        btn.querySelector('.slot-num').textContent = '?';
+        // 番号を振り直す
+        selected.forEach((s, i) => {
+          const b = btnMap[s];
+          b.querySelector('.slot-num').textContent = i + 1;
+          b.className = `slot-btn selected-${i+1}`;
+          b.querySelector('.slot-num').style.display = 'inline-block';
+        });
+      } else if (selected.length < 3) {
+        selected.push(slot);
+        const n = selected.length;
+        btn.className = `slot-btn selected-${n}`;
+        btn.querySelector('.slot-num').textContent = n;
+        btn.querySelector('.slot-num').style.display = 'inline-block';
       }
-    }
-  }
-});
 
+      confirmBtn.disabled = selected.length === 0;
+    };
+    grid.appendChild(btn);
+  });
+
+  const confirmBtn = document.createElement('button');
+  confirmBtn.className = 'submit-btn';
+  confirmBtn.style.marginTop = '10px';
+  confirmBtn.textContent = '日程を確定する';
+  confirmBtn.disabled = true;
+  confirmBtn.onclick = () => {
+    if (selected.length === 0) { showToast('日程を選択してください'); return; }
+    grid.querySelectorAll('button').forEach(b => b.disabled = true);
+    confirmBtn.disabled = true;
+    callback([...selected]);
+  };
+
+  wrap.appendChild(grid);
+  wrap.appendChild(confirmBtn);
+  chat.appendChild(wrap);
+  scrollBottom();
+}
+
+function addTextInput(placeholder, required, callback) {
+  const chat = document.getElementById('chat');
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'display:flex;gap:8px;align-self:stretch;animation:fadeIn 0.25s ease;';
+
+  const input = document.createElement('input');
+  input.placeholder = placeholder;
+  input.style.cssText = 'flex:1;border:1.5px solid #e0e0e0;border-radius:22px;padding:9px 14px;font-size:14px;font-family:inherit;outline:none;';
+  input.addEventListener('focus', () => input.style.borderColor = 'var(--primary)');
+  input.addEventListener('blur', () => input.style.borderColor = '#e0e0e0');
+
+  const btn = document.createElement('button');
+  btn.textContent = '→';
+  btn.style.cssText = 'background:var(--primary);color:white;border:none;border-radius:50%;width:40px;height:40px;font-size:18px;cursor:pointer;flex-shrink:0;';
+  btn.onclick = () => {
+    const val = input.value.trim();
+    if (required && !val) { showToast('入力してください'); return; }
+    input.disabled = true;
+    btn.disabled = true;
+    callback(val || 'わからない');
+  };
+
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') btn.click();
+  });
+
+  wrap.appendChild(input);
+  wrap.appendChild(btn);
+  chat.appendChild(wrap);
+  scrollBottom();
+  setTimeout(() => input.focus(), 300);
+}
+
+function showTyping() {
+  const chat = document.getElementById('chat');
+  const div = document.createElement('div');
+  div.id = 'typing';
+  div.className = 'typing';
+  div.innerHTML = '<span></span><span></span><span></span>';
+  chat.appendChild(div);
+  scrollBottom();
+}
+
+function removeTyping() {
+  const t = document.getElementById('typing');
+  if (t) t.remove();
+}
+
+function setProgress(step) {
+  state.step = step;
+  document.getElementById('progress-fill').style.width = `${(step / TOTAL_STEPS) * 100}%`;
+}
+
+function scrollBottom() {
+  setTimeout(() => {
+    const c = document.getElementById('chat');
+    if (c) c.scrollTop = c.scrollHeight;
+  }, 50);
+}
+
+function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ===== 起動 =====
 init();
-
 </script>
-
 </body>
 </html>
