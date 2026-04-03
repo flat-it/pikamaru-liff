@@ -283,6 +283,81 @@
     margin-top: 8px;
   }
 
+  /* ===== 料金シミュレーション ===== */
+  .price-sim {
+    background: var(--white);
+    border-radius: var(--radius);
+    padding: 16px;
+    box-shadow: var(--shadow);
+    align-self: stretch;
+    animation: fadeIn 0.25s ease;
+  }
+  .price-sim h3 {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--primary-dark);
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--primary-light);
+  }
+  .price-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+    font-size: 13px;
+    border-bottom: 1px solid #f0f0f0;
+  }
+  .price-row:last-of-type { border-bottom: none; }
+  .price-row .label { color: var(--text); flex: 1; }
+  .price-row .amount { font-weight: 700; color: var(--text); white-space: nowrap; margin-left: 8px; }
+  .price-row.total {
+    margin-top: 8px;
+    padding-top: 10px;
+    border-top: 2px solid var(--border);
+    font-size: 15px;
+  }
+  .price-row.total .label { font-weight: 700; color: var(--text); }
+  .price-row.total .amount { color: var(--primary-dark); font-size: 18px; }
+  .price-option-group {
+    margin: 10px 0 4px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .price-checkbox-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 0;
+    font-size: 13px;
+    border-bottom: 1px solid #f5f5f5;
+    cursor: pointer;
+  }
+  .price-checkbox-row input[type=checkbox] {
+    width: 16px; height: 16px;
+    accent-color: var(--primary);
+    flex-shrink: 0;
+    cursor: pointer;
+  }
+  .price-checkbox-row .opt-label { flex: 1; color: var(--text); }
+  .price-checkbox-row .opt-amount { font-weight: 700; color: #555; white-space: nowrap; }
+  .price-note {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 4px;
+    line-height: 1.5;
+  }
+  .price-tax-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 4px;
+  }
+
   /* ===== エラートースト ===== */
   #toast {
     position: fixed;
@@ -434,11 +509,324 @@ function stepAskModelNumber() {
   addTextInput('例：AQW-VX12P', false, (val) => {
     state.userData.model_number = val === 'わからない' ? '' : val;
     addBubble('user', val);
-    stepAskUsedYears();
+    stepShowPriceSimulation();
   });
 }
 
-// ===== Step 4: 使用年数 =====
+// ===== Step 3.5: 料金シミュレーション =====
+function stepShowPriceSimulation() {
+  setProgress(3);
+  addBubble('bot', '料金シミュレーションをご確認ください。\nオプションを選択すると合計金額が変わります。');
+
+  const isDoram = state.userData.type === 'ドラム';
+  const baseFee = isDoram ? 25000 : 15000;
+
+  const chat = document.getElementById('chat');
+  const wrap = document.createElement('div');
+  wrap.className = 'price-sim';
+
+  // --- オプション定義 ---
+  const mandatoryOptions = isDoram ? [] : [
+    { id: 'opt_8kg',    label: '8キロ以上',       amount: 3000 },
+    { id: 'opt_hitachi', label: '日立製品',        amount: 3000 },
+    { id: 'opt_dryer',  label: '乾燥機能付き',     amount: 5000 },
+    { id: 'opt_hitachi_special', label: '日立製特殊', amount: 5000 },
+  ];
+  const dryOptions = isDoram ? [
+    { id: 'opt_dry', label: '乾燥ダクト・ヒートポンプ洗浄（Panasonic製 / AQUA / アイリスオーヤマ / 日立 / 東芝 / SHARP）', amount: 10000 }
+  ] : [];
+  const drainOptions = [
+    { id: 'opt_drain', label: '排水経路・排水口・防水パン・洗濯機周辺', amount: 3000 }
+  ];
+  const liftOptions = [
+    { id: 'opt_lift',      label: '嵩上げ（工賃のみ）',  amount: 3000 },
+    { id: 'opt_lift_parts', label: '嵩上げ部材込み',      amount: 5000 }
+  ];
+
+  // 状態管理
+  const selectedOptions = {};
+
+  function calcTotal() {
+    let total = baseFee;
+    Object.values(selectedOptions).forEach(v => { if (v) total += v; });
+    return total;
+  }
+
+  function renderPriceRows() {
+    const rows = wrap.querySelectorAll('.price-row');
+    rows.forEach(r => r.remove());
+    const totalRow = wrap.querySelector('.price-total-wrap');
+    if (totalRow) totalRow.remove();
+
+    const insertPoint = wrap.querySelector('.opt-section');
+
+    // 基本料金行
+    const baseRow = document.createElement('div');
+    baseRow.className = 'price-row';
+    const baseItems = isDoram
+      ? '洗濯機内側・外側、ドラム槽、脱水槽、脱水槽カバー、循環経路'
+      : '洗濯機内側・外側、ドラム槽、脱水槽';
+    baseRow.innerHTML = `<span class="label">基本料金<br><small style="color:#999;font-weight:400">${baseItems}</small></span><span class="amount">¥${baseFee.toLocaleString()}</span>`;
+    wrap.insertBefore(baseRow, insertPoint);
+
+    const totalVal = calcTotal();
+    const taxVal = Math.floor(totalVal * 0.1);
+    const grandTotal = totalVal + taxVal;
+
+    const totalWrap = document.createElement('div');
+    totalWrap.className = 'price-total-wrap';
+    totalWrap.innerHTML = `
+      <div class="price-tax-row"><span>小計</span><span>¥${totalVal.toLocaleString()}</span></div>
+      <div class="price-tax-row"><span>消費税（10%）</span><span>¥${taxVal.toLocaleString()}</span></div>
+      <div class="price-row total"><span class="label">合計（税込）</span><span class="amount">¥${grandTotal.toLocaleString()}</span></div>
+    `;
+    wrap.insertBefore(totalWrap, wrap.querySelector('.price-confirm-btn'));
+  }
+
+  // ヘッダー
+  const title = document.createElement('h3');
+  title.textContent = `💰 料金シミュレーション（${isDoram ? 'ドラム式' : '縦型'}・分解洗浄）`;
+  wrap.appendChild(title);
+
+  // オプションセクション
+  const optSection = document.createElement('div');
+  optSection.className = 'opt-section';
+
+  function addOptionGroup(label, options, mutuallyExclusive) {
+    const groupLabel = document.createElement('div');
+    groupLabel.className = 'price-option-group';
+    groupLabel.textContent = label;
+    optSection.appendChild(groupLabel);
+
+    options.forEach(opt => {
+      const row = document.createElement('label');
+      row.className = 'price-checkbox-row';
+
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.id = opt.id;
+
+      cb.addEventListener('change', () => {
+        if (mutuallyExclusive) {
+          // 同グループは1つだけ選択
+          options.forEach(o => {
+            selectedOptions[o.id] = null;
+            const el = optSection.querySelector(`#${o.id}`);
+            if (el && el !== cb) el.checked = false;
+          });
+        }
+        selectedOptions[opt.id] = cb.checked ? opt.amount : null;
+        renderPriceRows();
+      });
+
+      row.appendChild(cb);
+      row.innerHTML += `<span class="opt-label">${opt.label}</span><span class="opt-amount">+¥${opt.amount.toLocaleString()}</span>`;
+      // Re-append cb since innerHTML reset
+      const labelEl = row;
+      labelEl.querySelector('input') || labelEl.prepend(cb);
+
+      // Fix: rebuild properly
+      const finalRow = document.createElement('label');
+      finalRow.className = 'price-checkbox-row';
+      finalRow.appendChild(cb);
+      const labelSpan = document.createElement('span');
+      labelSpan.className = 'opt-label';
+      labelSpan.textContent = opt.label;
+      const amtSpan = document.createElement('span');
+      amtSpan.className = 'opt-amount';
+      amtSpan.textContent = `+¥${opt.amount.toLocaleString()}`;
+      finalRow.appendChild(labelSpan);
+      finalRow.appendChild(amtSpan);
+
+      selectedOptions[opt.id] = null;
+      optSection.appendChild(finalRow);
+      // Store reference to checkbox
+      finalRow._cb = cb;
+      // Re-listen
+      cb.addEventListener('change', () => {}); // already attached above
+    });
+  }
+
+  // 縦型のみ：必須オプション（1つ選択）
+  if (!isDoram && mandatoryOptions.length > 0) {
+    const groupLabel = document.createElement('div');
+    groupLabel.className = 'price-option-group';
+    groupLabel.textContent = '必須オプション（該当するものを選択）';
+    const note = document.createElement('div');
+    note.className = 'price-note';
+    note.textContent = '※ご使用の洗濯機に合わせて選択してください（1つ選択）';
+    optSection.appendChild(groupLabel);
+    optSection.appendChild(note);
+
+    mandatoryOptions.forEach(opt => {
+      const finalRow = document.createElement('label');
+      finalRow.className = 'price-checkbox-row';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.id = opt.id;
+      cb.addEventListener('change', () => {
+        mandatoryOptions.forEach(o => {
+          selectedOptions[o.id] = null;
+          const el = document.getElementById(o.id);
+          if (el && el !== cb) el.checked = false;
+        });
+        selectedOptions[opt.id] = cb.checked ? opt.amount : null;
+        renderPriceRows();
+      });
+      const labelSpan = document.createElement('span');
+      labelSpan.className = 'opt-label';
+      labelSpan.textContent = opt.label;
+      const amtSpan = document.createElement('span');
+      amtSpan.className = 'opt-amount';
+      amtSpan.textContent = `+¥${opt.amount.toLocaleString()}`;
+      finalRow.appendChild(cb);
+      finalRow.appendChild(labelSpan);
+      finalRow.appendChild(amtSpan);
+      selectedOptions[opt.id] = null;
+      optSection.appendChild(finalRow);
+    });
+  }
+
+  // ドラムのみ：乾燥洗浄オプション
+  if (isDoram && dryOptions.length > 0) {
+    const groupLabel = document.createElement('div');
+    groupLabel.className = 'price-option-group';
+    groupLabel.textContent = '乾燥洗浄オプション';
+    const note = document.createElement('div');
+    note.className = 'price-note';
+    note.textContent = '※乾燥機能でお悩みのお客様は基本料金にプラスして選択';
+    optSection.appendChild(groupLabel);
+    optSection.appendChild(note);
+    dryOptions.forEach(opt => {
+      const finalRow = document.createElement('label');
+      finalRow.className = 'price-checkbox-row';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.id = opt.id;
+      cb.addEventListener('change', () => {
+        selectedOptions[opt.id] = cb.checked ? opt.amount : null;
+        renderPriceRows();
+      });
+      const labelSpan = document.createElement('span');
+      labelSpan.className = 'opt-label';
+      labelSpan.textContent = opt.label;
+      const amtSpan = document.createElement('span');
+      amtSpan.className = 'opt-amount';
+      amtSpan.textContent = `+¥${opt.amount.toLocaleString()}`;
+      finalRow.appendChild(cb);
+      finalRow.appendChild(labelSpan);
+      finalRow.appendChild(amtSpan);
+      selectedOptions[opt.id] = null;
+      optSection.appendChild(finalRow);
+    });
+  }
+
+  // 排水洗浄オプション（共通）
+  {
+    const groupLabel = document.createElement('div');
+    groupLabel.className = 'price-option-group';
+    groupLabel.textContent = '排水洗浄オプション';
+    const note = document.createElement('div');
+    note.className = 'price-note';
+    note.textContent = '※臭い・排水詰まりのお客様は基本料金にプラスして選択';
+    optSection.appendChild(groupLabel);
+    optSection.appendChild(note);
+    drainOptions.forEach(opt => {
+      const finalRow = document.createElement('label');
+      finalRow.className = 'price-checkbox-row';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.id = opt.id;
+      cb.addEventListener('change', () => {
+        selectedOptions[opt.id] = cb.checked ? opt.amount : null;
+        renderPriceRows();
+      });
+      const labelSpan = document.createElement('span');
+      labelSpan.className = 'opt-label';
+      labelSpan.textContent = opt.label;
+      const amtSpan = document.createElement('span');
+      amtSpan.className = 'opt-amount';
+      amtSpan.textContent = `+¥${opt.amount.toLocaleString()}`;
+      finalRow.appendChild(cb);
+      finalRow.appendChild(labelSpan);
+      finalRow.appendChild(amtSpan);
+      selectedOptions[opt.id] = null;
+      optSection.appendChild(finalRow);
+    });
+  }
+
+  // 住居オプション（共通・排他）
+  {
+    const groupLabel = document.createElement('div');
+    groupLabel.className = 'price-option-group';
+    groupLabel.textContent = '住居オプション';
+    optSection.appendChild(groupLabel);
+    liftOptions.forEach(opt => {
+      const finalRow = document.createElement('label');
+      finalRow.className = 'price-checkbox-row';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.id = opt.id;
+      cb.addEventListener('change', () => {
+        liftOptions.forEach(o => {
+          selectedOptions[o.id] = null;
+          const el = document.getElementById(o.id);
+          if (el && el !== cb) el.checked = false;
+        });
+        selectedOptions[opt.id] = cb.checked ? opt.amount : null;
+        renderPriceRows();
+      });
+      const labelSpan = document.createElement('span');
+      labelSpan.className = 'opt-label';
+      labelSpan.textContent = opt.label;
+      const amtSpan = document.createElement('span');
+      amtSpan.className = 'opt-amount';
+      amtSpan.textContent = `+¥${opt.amount.toLocaleString()}`;
+      finalRow.appendChild(cb);
+      finalRow.appendChild(labelSpan);
+      finalRow.appendChild(amtSpan);
+      selectedOptions[opt.id] = null;
+      optSection.appendChild(finalRow);
+    });
+  }
+
+  wrap.appendChild(optSection);
+
+  // 確認ボタン
+  const confirmBtn = document.createElement('button');
+  confirmBtn.className = 'submit-btn price-confirm-btn';
+  confirmBtn.style.marginTop = '12px';
+  confirmBtn.textContent = 'この内容で次へ →';
+  confirmBtn.onclick = () => {
+    // 選択内容を保存
+    const totalVal = calcTotal();
+    const taxVal = Math.floor(totalVal * 0.1);
+    state.userData.estimatedPrice = totalVal + taxVal;
+    state.userData.selectedPriceOptions = Object.entries(selectedOptions)
+      .filter(([, v]) => v)
+      .map(([k]) => k);
+
+    wrap.querySelectorAll('input, button').forEach(el => el.disabled = true);
+
+    const allOpts = [...mandatoryOptions, ...dryOptions, ...drainOptions, ...liftOptions];
+    const chosenLabels = Object.entries(selectedOptions)
+      .filter(([, v]) => v)
+      .map(([k]) => allOpts.find(o => o.id === k)?.label)
+      .filter(Boolean);
+
+    const msg = `概算料金：¥${(totalVal + taxVal).toLocaleString()}（税込）` +
+      (chosenLabels.length ? `\n選択オプション：${chosenLabels.join('、')}` : '\nオプションなし');
+    addBubble('user', msg);
+    stepAskUsedYears();
+  };
+  wrap.appendChild(confirmBtn);
+
+  chat.appendChild(wrap);
+  renderPriceRows();
+  scrollBottom();
+}
+
+
 function stepAskUsedYears() {
   setProgress(4);
   addBubble('bot', '洗濯機の使用年数はどのくらいですか？');
@@ -477,7 +865,7 @@ function stepAskPrefecture() {
   // 加盟店マスタから動的に都道府県を生成するのが理想だが、
   // get_franchise は prefecture + type が必要なため、よく使われる都道府県を表示
   // 本番は別途 prefecture_list API を追加することを推奨
-  const prefs = ['茨城県','栃木県','群馬県','埼玉県','千葉県','東京都','神奈川県','静岡県','愛知県'];
+  const prefs = ['茨城県','埼玉県','千葉県','東京都','神奈川県','静岡県','愛知県'];
 
   addScrollSelect(prefs, async (val) => {
     state.userData.prefecture = val;
@@ -642,8 +1030,29 @@ async function submitReserve() {
   const result = await callAPI(body);
 
   if (result && result.result === 'success') {
+    // 確定日時の表示
+    const completeEl = document.getElementById('complete');
+    if (result.datetime) {
+      const parsed = parseDatetime(result.datetime);
+      if (parsed) {
+        const dtDiv = document.createElement('div');
+        dtDiv.style.cssText = 'background:var(--primary-light);border:1.5px solid var(--primary);border-radius:10px;padding:12px 16px;text-align:left;width:100%;max-width:320px;';
+        dtDiv.innerHTML = `
+          <div style="font-size:11px;font-weight:700;color:var(--primary-dark);margin-bottom:6px;">📅 確定日時</div>
+          <div style="font-size:15px;font-weight:700;color:var(--text);">${parsed.display}</div>
+          ${parsed.shopName ? `<div style="font-size:12px;color:var(--text-muted);margin-top:3px;">担当：${parsed.shopName}</div>` : ''}
+        `;
+        // complete の p タグの後に挿入
+        const pTag = completeEl.querySelector('p');
+        if (pTag && pTag.nextSibling) {
+          completeEl.insertBefore(dtDiv, pTag.nextSibling);
+        } else {
+          completeEl.appendChild(dtDiv);
+        }
+      }
+    }
     document.getElementById('chat').style.display = 'none';
-    document.getElementById('complete').style.display = 'flex';
+    completeEl.style.display = 'flex';
   } else {
     btn.disabled = false;
     btn.textContent = '予約を確定する';
@@ -651,7 +1060,33 @@ async function submitReserve() {
   }
 }
 
-// ===== UI ヘルパー =====
+// ===== ユーティリティ: 確定日時文字列を解析 =====
+// 例: "ピカまる加盟店_2026-03-01_18:00" → { shopName, date, time, display }
+function parseDatetime(datetimeStr) {
+  if (!datetimeStr) return null;
+  // 後ろから _HH:MM と _YYYY-MM-DD を切り出す
+  const parts = datetimeStr.split('_');
+  if (parts.length < 3) return { shopName: datetimeStr, date: '', time: '', display: datetimeStr };
+  const time = parts[parts.length - 1];   // "18:00"
+  const date = parts[parts.length - 2];   // "2026-03-01"
+  const shopName = parts.slice(0, parts.length - 2).join('_');
+
+  // 日付フォーマット: "2026-03-01" → "2026年3月1日"
+  let dateDisplay = date;
+  const dm = date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dm) {
+    dateDisplay = `${dm[1]}年${parseInt(dm[2])}月${parseInt(dm[3])}日`;
+  }
+
+  return {
+    shopName,
+    date,
+    time,
+    display: `${dateDisplay} ${time}`
+  };
+}
+
+
 function addBubble(type, text) {
   const chat = document.getElementById('chat');
   const div = document.createElement('div');

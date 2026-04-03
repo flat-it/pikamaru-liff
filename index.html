@@ -485,18 +485,25 @@ function renderMyPage() {
     const badge = getStatusBadge(r.status);
     const msgBadge = (r.messageCount > 0)
       ? `<div class="msg-badge">${r.messageCount}</div>` : '';
-    const dateText = r.datetime
-      ? `確定：${formatDate(r.datetime)}`
-      : `第1希望：${r.date1 || '未設定'}`;
-    const subText = [r.date2 && `第2希望：${r.date2}`, r.date3 && `第3希望：${r.date3}`]
-      .filter(Boolean).join('<br>');
+
+    // datetime（確定日時）は "店名_YYYY-MM-DD_HH:mm" 形式
+    let dateMain, dateSub;
+    if (r.datetime) {
+      const p = parseDatetime(r.datetime);
+      dateMain = `📅 確定：${p ? p.display : r.datetime}`;
+      dateSub  = p && p.shopName ? `担当：${p.shopName}` : '';
+    } else {
+      dateMain = `第1希望：${r.date1 || '未設定'}`;
+      dateSub  = [r.date2 && `第2希望：${r.date2}`, r.date3 && `第3希望：${r.date3}`]
+        .filter(Boolean).join('<br>');
+    }
 
     return `
       <div class="reserve-card" onclick="goDetail('${r.reserveid}')">
         <span class="status-badge ${badge.cls}">${badge.label}</span>
         ${msgBadge}
-        <div class="date-main">${dateText}</div>
-        ${subText ? `<div class="date-sub">${subText}</div>` : ''}
+        <div class="date-main">${dateMain}</div>
+        ${dateSub ? `<div class="date-sub">${dateSub}</div>` : ''}
         <div class="card-arrow">›</div>
       </div>`;
   }).join('');
@@ -539,11 +546,16 @@ function renderDetail() {
   const badge = getStatusBadge(r.status);
 
   // ===== サマリー行（常時表示） =====
+  let summaryDateStr;
+  if (r.datetime) {
+    const p = parseDatetime(r.datetime);
+    summaryDateStr = p ? `確定：${p.display}` : `確定：${r.datetime}`;
+  } else {
+    summaryDateStr = `第1希望：${r.request_1 || '未設定'}`;
+  }
   document.getElementById('reserve-info-summary').innerHTML = `
     <span class="info-status ${badge.cls} status-badge">${badge.label}</span>
-    <span class="info-val" style="font-size:12px;color:var(--text-muted)">
-      ${r.datetime ? '確定：' + r.datetime : '第1希望：' + (r.request_1 || '未設定')}
-    </span>
+    <span class="info-val" style="font-size:12px;color:var(--text-muted)">${summaryDateStr}</span>
   `;
 
   // ===== アコーディオン詳細 =====
@@ -556,7 +568,15 @@ function renderDetail() {
     ${row('第1希望', r.request_1)}
     ${row('第2希望', r.request_2)}
     ${row('第3希望', r.request_3)}
-    ${r.datetime ? row('確定日時', r.datetime) : ''}
+    ${r.datetime ? (() => {
+      const p = parseDatetime(r.datetime);
+      if (!p || !p.date) return row('確定日時', r.datetime);
+      const dm = p.date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      const dateJa = dm ? `${dm[1]}年${parseInt(dm[2])}月${parseInt(dm[3])}日` : p.date;
+      return row('確定日付', dateJa)
+           + row('確定時刻', p.time)
+           + (p.shopName ? row('担当加盟店', p.shopName) : '');
+    })() : ''}
 
     <div class="info-section-title">🧺 洗濯機</div>
     ${row('種類', r.macinetype)}
@@ -681,10 +701,29 @@ function getStatusBadge(status) {
   return { cls: 'pending', label: status };
 }
 
+// ===== 確定日時パーサー =====
+// "ピカまる加盟店_2026-03-01_18:00" → { shopName, date, time, display }
+function parseDatetime(str) {
+  if (!str) return null;
+  const parts = str.split('_');
+  if (parts.length < 3) return { shopName: str, date: '', time: '', display: str };
+  const time     = parts[parts.length - 1];           // "18:00"
+  const dateRaw  = parts[parts.length - 2];           // "2026-03-01"
+  const shopName = parts.slice(0, parts.length - 2).join('_');
+  const dm = dateRaw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const dateJa   = dm ? `${dm[1]}年${parseInt(dm[2])}月${parseInt(dm[3])}日` : dateRaw;
+  return { shopName, date: dateRaw, time, display: `${dateJa} ${time}` };
+}
+
 function formatDate(str) {
   if (!str) return '—';
+  // カスタム形式 "店名_YYYY-MM-DD_HH:mm" を優先パース
+  const parsed = parseDatetime(str);
+  if (parsed && parsed.date) return parsed.display;
+  // ISO日時などにフォールバック
   try {
     const d = new Date(str);
+    if (isNaN(d)) return str;
     return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
   } catch { return str; }
 }
